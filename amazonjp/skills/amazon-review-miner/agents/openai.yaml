@@ -1,0 +1,6 @@
+interface:
+  display_name: "Amazon Review Miner"
+  short_description: "Mine Japanese Amazon reviews for product gaps"
+  default_prompt: "Use $amazon-review-miner to cluster Japanese Amazon reviews into actionable product improvements."
+policy:
+  allow_implicit_invocation: true

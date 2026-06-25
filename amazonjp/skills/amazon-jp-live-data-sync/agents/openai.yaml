@@ -1,0 +1,4 @@
+interface:
+  display_name: "Amazon JP Live Data Sync"
+  short_description: "Normalize fresh Seller Central and Amazon Ads reports"
+  default_prompt: "Use $amazon-jp-live-data-sync to normalize fresh Amazon JP operating exports and identify weekly alerts."

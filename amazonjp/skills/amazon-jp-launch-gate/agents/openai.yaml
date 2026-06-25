@@ -1,0 +1,4 @@
+interface:
+  display_name: "Amazon JP Launch Gate"
+  short_description: "Compliance cost and FBA launch gate"
+  default_prompt: "Use $amazon-jp-launch-gate to decide whether an Amazon Japan SKU is ready for listing, FBA, and ad launch."

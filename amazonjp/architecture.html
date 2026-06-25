@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Amazon JP Launch OS Architecture</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; }
+    :root {
+      --bg: #020617;
+      --panel: #07111f;
+      --panel-2: #0b1626;
+      --ink: #f8fafc;
+      --muted: #94a3b8;
+      --line: #1e293b;
+      --cyan: #22d3ee;
+      --emerald: #34d399;
+      --violet: #a78bfa;
+      --amber: #fbbf24;
+      --rose: #fb7185;
+      --orange: #fb923c;
+      --slate: #94a3b8;
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background:
+        linear-gradient(180deg, rgba(15, 23, 42, .92), rgba(2, 6, 23, 1)),
+        var(--bg);
+      font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+      letter-spacing: 0;
+    }
+    .page {
+      width: min(1560px, calc(100vw - 28px));
+      margin: 0 auto;
+      padding: 26px 0 34px;
+    }
+    header {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: end;
+      gap: 18px;
+      margin-bottom: 16px;
+    }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--cyan);
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .pulse {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--emerald);
+      box-shadow: 0 0 18px rgba(52, 211, 153, .95);
+      animation: pulse 2.1s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(.9); opacity: .65; }
+      50% { transform: scale(1.25); opacity: 1; }
+    }
+    h1 {
+      margin: 10px 0 0;
+      font-size: clamp(28px, 4vw, 54px);
+      line-height: 1.02;
+      max-width: 980px;
+    }
+    .subtitle {
+      margin: 10px 0 0;
+      max-width: 980px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.7;
+    }
+    .score {
+      display: grid;
+      grid-template-columns: repeat(3, 92px);
+      gap: 8px;
+    }
+    .score div {
+      min-height: 70px;
+      padding: 10px;
+      border: 1px solid rgba(148, 163, 184, .24);
+      border-radius: 8px;
+      background: rgba(15, 23, 42, .72);
+    }
+    .score strong { display: block; font-size: 21px; line-height: 1; }
+    .score span { display: block; margin-top: 8px; color: var(--muted); font-size: 10px; line-height: 1.35; }
+    .diagram-card {
+      border: 1px solid rgba(148, 163, 184, .24);
+      border-radius: 12px;
+      background: linear-gradient(180deg, rgba(15, 23, 42, .88), rgba(2, 6, 23, .96));
+      box-shadow: 0 28px 80px rgba(0, 0, 0, .36);
+      overflow: hidden;
+    }
+    svg {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+    .caption {
+      display: grid;
+      grid-template-columns: 1.1fr .9fr;
+      gap: 14px;
+      padding: 14px 16px 16px;
+      border-top: 1px solid rgba(148, 163, 184, .16);
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.65;
+    }
+    .caption b { color: var(--ink); }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-top: 14px;
+    }
+    .card {
+      border: 1px solid rgba(148, 163, 184, .22);
+      border-radius: 8px;
+      background: rgba(15, 23, 42, .68);
+      padding: 14px;
+      min-height: 148px;
+    }
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .card-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      flex: 0 0 auto;
+    }
+    .card h3 {
+      margin: 0;
+      font-size: 13px;
+      line-height: 1.35;
+    }
+    .card ul {
+      padding: 0;
+      margin: 0;
+      list-style: none;
+      display: grid;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.55;
+    }
+    footer {
+      margin-top: 14px;
+      color: #64748b;
+      text-align: center;
+      font-size: 10px;
+    }
+    .cyan { background: var(--cyan); }
+    .green { background: var(--emerald); }
+    .amber { background: var(--amber); }
+    .rose { background: var(--rose); }
+    @media (max-width: 980px) {
+      header, .caption, .cards { grid-template-columns: 1fr; }
+      .score { grid-template-columns: repeat(3, 1fr); }
+    }
+    @media (max-width: 620px) {
+      .page { width: min(100vw - 18px, 1560px); padding-top: 16px; }
+      .score { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <div>
+        <div class="eyebrow"><span class="pulse"></span>Amazon JP Launch OS / architecture coverage</div>
+        <h1>从选品到复盘的 Amazon JP 可执行架构</h1>
+        <p class="subtitle">
+          基于当前工程的 14 个 skills、12 个业务阶段、G0-G12 Gate 和专家评估结果重绘。绿色代表可生成核心产物，蓝色代表编排/实时数据，黄色代表证据依赖，红色代表人工后台与生产就绪风险。
+        </p>
+      </div>
+      <div class="score" aria-label="architecture summary">
+        <div><strong>14</strong><span>Amazon JP skills</span></div>
+        <div><strong>G0-G12</strong><span>Gate controls</span></div>
+        <div><strong>MVP</strong><span>Launch OS status</span></div>
+      </div>
+    </header>
+
+    <main class="diagram-card">
+      <svg viewBox="0 0 1560 1030" role="img" aria-label="Amazon JP launch workflow architecture diagram">
+        <defs>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+          </pattern>
+          <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#64748b"/>
+          </marker>
+          <marker id="arrowhead-cyan" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#22d3ee"/>
+          </marker>
+          <filter id="soft-glow" x="-30%" y="-30%" width="160%" height="160%">
+            <feGaussianBlur stdDeviation="3" result="blur"/>
+            <feMerge>
+              <feMergeNode in="blur"/>
+              <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+          </filter>
+          <style>
+            .title { fill: #f8fafc; font-size: 15px; font-weight: 700; }
+            .label { fill: #f8fafc; font-size: 11px; font-weight: 700; }
+            .sub { fill: #94a3b8; font-size: 8.5px; font-weight: 500; }
+            .tiny { fill: #94a3b8; font-size: 7.5px; font-weight: 500; }
+            .stage-title { fill: #f8fafc; font-size: 9.5px; font-weight: 700; }
+            .stage-sub { fill: #94a3b8; font-size: 7.5px; font-weight: 500; }
+            .gate-text { fill: #020617; font-size: 7.5px; font-weight: 800; }
+            .edge { stroke: #64748b; stroke-width: 1.4; fill: none; marker-end: url(#arrowhead); }
+            .edge-cyan { stroke: #22d3ee; stroke-width: 1.5; fill: none; marker-end: url(#arrowhead-cyan); }
+            .edge-soft { stroke: #64748b; stroke-width: 1; fill: none; stroke-dasharray: 5 5; }
+            .feedback { stroke: #22d3ee; stroke-width: 2; fill: none; stroke-dasharray: 9 6; marker-end: url(#arrowhead-cyan); }
+            .region { fill: rgba(2, 6, 23, .28); stroke: #fbbf24; stroke-width: 1.4; stroke-dasharray: 8 5; }
+            .group { fill: rgba(15, 23, 42, .28); stroke: #334155; stroke-width: 1.1; stroke-dasharray: 5 5; }
+          </style>
+        </defs>
+
+        <rect width="1560" height="1030" fill="#020617"/>
+        <rect width="1560" height="1030" fill="url(#grid)" opacity=".95"/>
+
+        <!-- Flow edges behind nodes -->
+        <path class="edge" d="M164 154 H188"/>
+        <path class="edge" d="M304 154 H328"/>
+        <path class="edge" d="M444 154 H468"/>
+        <path class="edge" d="M584 154 H608"/>
+        <path class="edge" d="M724 154 H748"/>
+        <path class="edge" d="M864 154 H888"/>
+        <path class="edge" d="M1024 154 H1048"/>
+        <path class="edge" d="M1164 154 H1188"/>
+        <path class="edge" d="M1304 154 H1328"/>
+        <path class="edge" d="M1444 154 C1480 154 1480 238 1444 238"/>
+        <path class="edge" d="M1328 238 H1304"/>
+        <path class="edge" d="M1188 238 H1164"/>
+        <path class="edge" d="M1048 238 H1024"/>
+        <path class="edge" d="M888 238 H864"/>
+        <path class="edge" d="M748 238 H724"/>
+        <path class="feedback" d="M1350 620 C1492 705 1496 820 1170 830 C872 839 585 812 350 720"/>
+
+        <!-- Stage row boundary -->
+        <rect x="38" y="72" width="1484" height="220" rx="12" class="region"/>
+        <text x="58" y="98" class="title">Business Pipeline: 12 stages from live data to optimization</text>
+
+        <!-- Stage nodes row 1 -->
+        <g>
+          <rect x="58" y="118" width="106" height="72" rx="6" fill="#0f172a"/>
+          <rect x="58" y="118" width="106" height="72" rx="6" fill="rgba(8,51,68,.42)" stroke="#22d3ee" stroke-width="1.5"/>
+          <text x="111" y="141" text-anchor="middle" class="stage-title">1 Live Data</text>
+          <text x="111" y="159" text-anchor="middle" class="stage-sub">reports / freshness</text>
+          <text x="111" y="176" text-anchor="middle" class="stage-sub">G0 sync</text>
+        </g>
+        <g>
+          <rect x="198" y="118" width="106" height="72" rx="6" fill="#0f172a"/>
+          <rect x="198" y="118" width="106" height="72" rx="6" fill="rgba(6,78,59,.42)" stroke="#34d399" stroke-width="1.5"/>
+          <text x="251" y="141" text-anchor="middle" class="stage-title">2 Normalize</text>
+          <text x="251" y="159" text-anchor="middle" class="stage-sub">POE/SQP/ASIN</text>
+          <text x="251" y="176" text-anchor="middle" class="stage-sub">G1 quality</text>
+        </g>
+        <g>
+          <rect x="338" y="118" width="106" height="72" rx="6" fill="#0f172a"/>
+          <rect x="338" y="118" width="106" height="72" rx="6" fill="rgba(6,78,59,.42)" stroke="#34d399" stroke-width="1.5"/>
+          <text x="391" y="141" text-anchor="middle" class="stage-title">3 Score</text>
+          <text x="391" y="159" text-anchor="middle" class="stage-sub">A/B/C/Reject</text>
+          <text x="391" y="176" text-anchor="middle" class="stage-sub">G2 opportunity</text>
+        </g>
+        <g>
+          <rect x="478" y="118" width="106" height="72" rx="6" fill="#0f172a"/>
+          <rect x="478" y="118" width="106" height="72" rx="6" fill="rgba(120,53,15,.34)" stroke="#fbbf24" stroke-width="1.5"/>
+          <text x="531" y="141" text-anchor="middle" class="stage-title">4 Risk</text>
+          <text x="531" y="159" text-anchor="middle" class="stage-sub">IP / category</text>
+          <text x="531" y="176" text-anchor="middle" class="stage-sub">G3 screen</text>
+        </g>
+        <g>
+          <rect x="618" y="118" width="106" height="72" rx="6" fill="#0f172a"/>
+          <rect x="618" y="118" width="106" height="72" rx="6" fill="rgba(120,53,15,.34)" stroke="#fbbf24" stroke-width="1.5"/>
+          <text x="671" y="141" text-anchor="middle" class="stage-title">5 QC</text>
+          <text x="671" y="159" text-anchor="middle" class="stage-sub">supplier/sample</text>
+          <text x="671" y="176" text-anchor="middle" class="stage-sub">G4 proof</text>
+        </g>
+        <g>
+          <rect x="758" y="118" width="106" height="72" rx="6" fill="#0f172a"/>
+          <rect x="758" y="118" width="106" height="72" rx="6" fill="rgba(120,53,15,.34)" stroke="#fbbf24" stroke-width="1.5"/>
+          <text x="811" y="141" text-anchor="middle" class="stage-title">6 Economics</text>
+          <text x="811" y="159" text-anchor="middle" class="stage-sub">landed cost</text>
+          <text x="811" y="176" text-anchor="middle" class="stage-sub">G5 margin</text>
+        </g>
+        <g>
+          <rect x="898" y="118" width="126" height="72" rx="6" fill="#0f172a"/>
+          <rect x="898" y="118" width="126" height="72" rx="6" fill="rgba(8,51,68,.42)" stroke="#22d3ee" stroke-width="1.5"/>
+          <text x="961" y="141" text-anchor="middle" class="stage-title">7 Launch Gate</text>
+          <text x="961" y="159" text-anchor="middle" class="stage-sub">compliance / IP</text>
+          <text x="961" y="176" text-anchor="middle" class="stage-sub">G6 hard gate</text>
+        </g>
+        <g>
+          <rect x="1058" y="118" width="106" height="72" rx="6" fill="#0f172a"/>
+          <rect x="1058" y="118" width="106" height="72" rx="6" fill="rgba(6,78,59,.42)" stroke="#34d399" stroke-width="1.5"/>
+          <text x="1111" y="141" text-anchor="middle" class="stage-title">8 Content</text>
+          <text x="1111" y="159" text-anchor="middle" class="stage-sub">Listing / A+</text>
+          <text x="1111" y="176" text-anchor="middle" class="stage-sub">G7-G8 ready</text>
+        </g>
+        <g>
+          <rect x="1198" y="118" width="106" height="72" rx="6" fill="#0f172a"/>
+          <rect x="1198" y="118" width="106" height="72" rx="6" fill="rgba(136,19,55,.42)" stroke="#fb7185" stroke-width="1.5"/>
+          <text x="1251" y="141" text-anchor="middle" class="stage-title">9 Seller Ops</text>
+          <text x="1251" y="159" text-anchor="middle" class="stage-sub">flat file / ASIN</text>
+          <text x="1251" y="176" text-anchor="middle" class="stage-sub">G9 manual</text>
+        </g>
+        <g>
+          <rect x="1338" y="118" width="106" height="72" rx="6" fill="#0f172a"/>
+          <rect x="1338" y="118" width="106" height="72" rx="6" fill="rgba(136,19,55,.42)" stroke="#fb7185" stroke-width="1.5"/>
+          <text x="1391" y="141" text-anchor="middle" class="stage-title">10 FBA</text>
+          <text x="1391" y="159" text-anchor="middle" class="stage-sub">labels / inbound</text>
+          <text x="1391" y="176" text-anchor="middle" class="stage-sub">G10 proof</text>
+        </g>
+        <g>
+          <rect x="1198" y="202" width="106" height="72" rx="6" fill="#0f172a"/>
+          <rect x="1198" y="202" width="106" height="72" rx="6" fill="rgba(6,78,59,.42)" stroke="#34d399" stroke-width="1.5"/>
+          <text x="1251" y="225" text-anchor="middle" class="stage-title">11 Ads</text>
+          <text x="1251" y="243" text-anchor="middle" class="stage-sub">SP launch plan</text>
+          <text x="1251" y="260" text-anchor="middle" class="stage-sub">G11 budget</text>
+        </g>
+        <g>
+          <rect x="758" y="202" width="106" height="72" rx="6" fill="#0f172a"/>
+          <rect x="758" y="202" width="106" height="72" rx="6" fill="rgba(8,51,68,.42)" stroke="#22d3ee" stroke-width="1.5"/>
+          <text x="811" y="225" text-anchor="middle" class="stage-title">12 Review</text>
+          <text x="811" y="243" text-anchor="middle" class="stage-sub">7/14/30 days</text>
+          <text x="811" y="260" text-anchor="middle" class="stage-sub">G12 actions</text>
+        </g>
+
+        <!-- Skills layer -->
+        <rect x="38" y="322" width="1484" height="332" rx="12" class="region"/>
+        <text x="58" y="348" class="title">Skill Execution Layer: 14 specialist skills coordinated by SOP Orchestrator</text>
+
+        <!-- Control plane -->
+        <g filter="url(#soft-glow)">
+          <rect x="630" y="374" width="300" height="92" rx="8" fill="#0f172a"/>
+          <rect x="630" y="374" width="300" height="92" rx="8" fill="rgba(8,51,68,.46)" stroke="#22d3ee" stroke-width="2"/>
+          <text x="780" y="404" text-anchor="middle" class="label">amazon-jp-sop-orchestrator</text>
+          <text x="780" y="424" text-anchor="middle" class="sub">control plane / state machine / gate order</text>
+          <text x="780" y="443" text-anchor="middle" class="sub">candidate_id · sku · launch_id · artifact contracts</text>
+        </g>
+
+        <!-- Left skills -->
+        <g>
+          <rect x="72" y="386" width="174" height="64" rx="6" fill="#0f172a"/>
+          <rect x="72" y="386" width="174" height="64" rx="6" fill="rgba(8,51,68,.4)" stroke="#22d3ee" stroke-width="1.5"/>
+          <text x="159" y="411" text-anchor="middle" class="label">live-data-sync</text>
+          <text x="159" y="429" text-anchor="middle" class="sub">Seller Central / Ads exports</text>
+        </g>
+        <g>
+          <rect x="270" y="386" width="174" height="64" rx="6" fill="#0f172a"/>
+          <rect x="270" y="386" width="174" height="64" rx="6" fill="rgba(6,78,59,.4)" stroke="#34d399" stroke-width="1.5"/>
+          <text x="357" y="411" text-anchor="middle" class="label">data-ingestor</text>
+          <text x="357" y="429" text-anchor="middle" class="sub">normalize research exports</text>
+        </g>
+        <g>
+          <rect x="72" y="474" width="174" height="64" rx="6" fill="#0f172a"/>
+          <rect x="72" y="474" width="174" height="64" rx="6" fill="rgba(6,78,59,.4)" stroke="#34d399" stroke-width="1.5"/>
+          <text x="159" y="499" text-anchor="middle" class="label">opportunity-scorer</text>
+          <text x="159" y="517" text-anchor="middle" class="sub">rank A/B/C/Reject</text>
+        </g>
+        <g>
+          <rect x="270" y="474" width="174" height="64" rx="6" fill="#0f172a"/>
+          <rect x="270" y="474" width="174" height="64" rx="6" fill="rgba(120,53,15,.3)" stroke="#fbbf24" stroke-width="1.5"/>
+          <text x="357" y="499" text-anchor="middle" class="label">risk-auditor</text>
+          <text x="357" y="517" text-anchor="middle" class="sub">IP / category / FBA risk</text>
+        </g>
+        <g>
+          <rect x="72" y="562" width="174" height="64" rx="6" fill="#0f172a"/>
+          <rect x="72" y="562" width="174" height="64" rx="6" fill="rgba(76,29,149,.36)" stroke="#a78bfa" stroke-width="1.5"/>
+          <text x="159" y="587" text-anchor="middle" class="label">radar-report</text>
+          <text x="159" y="605" text-anchor="middle" class="sub">shortlist / 7-day plan</text>
+        </g>
+        <g>
+          <rect x="270" y="562" width="174" height="64" rx="6" fill="#0f172a"/>
+          <rect x="270" y="562" width="174" height="64" rx="6" fill="rgba(120,53,15,.3)" stroke="#fbbf24" stroke-width="1.5"/>
+          <text x="357" y="587" text-anchor="middle" class="label">sourcing-qc</text>
+          <text x="357" y="605" text-anchor="middle" class="sub">supplier / sample / CAPA gap</text>
+        </g>
+
+        <!-- Middle readiness skills -->
+        <g>
+          <rect x="504" y="510" width="174" height="64" rx="6" fill="#0f172a"/>
+          <rect x="504" y="510" width="174" height="64" rx="6" fill="rgba(8,51,68,.4)" stroke="#22d3ee" stroke-width="1.5"/>
+          <text x="591" y="535" text-anchor="middle" class="label">launch-gate</text>
+          <text x="591" y="553" text-anchor="middle" class="sub">compliance / cost / proof</text>
+        </g>
+        <g>
+          <rect x="882" y="510" width="174" height="64" rx="6" fill="#0f172a"/>
+          <rect x="882" y="510" width="174" height="64" rx="6" fill="rgba(6,78,59,.4)" stroke="#34d399" stroke-width="1.5"/>
+          <text x="969" y="535" text-anchor="middle" class="label">review-miner</text>
+          <text x="969" y="553" text-anchor="middle" class="sub">pain -> product requirements</text>
+        </g>
+        <g>
+          <rect x="882" y="590" width="174" height="64" rx="6" fill="#0f172a"/>
+          <rect x="882" y="590" width="174" height="64" rx="6" fill="rgba(6,78,59,.4)" stroke="#34d399" stroke-width="1.5"/>
+          <text x="969" y="615" text-anchor="middle" class="label">listing-aplus</text>
+          <text x="969" y="633" text-anchor="middle" class="sub">JP Listing / A+ / keywords</text>
+        </g>
+
+        <!-- Right execution skills -->
+        <g>
+          <rect x="1118" y="386" width="174" height="64" rx="6" fill="#0f172a"/>
+          <rect x="1118" y="386" width="174" height="64" rx="6" fill="rgba(136,19,55,.4)" stroke="#fb7185" stroke-width="1.5"/>
+          <text x="1205" y="411" text-anchor="middle" class="label">seller-central-ops</text>
+          <text x="1205" y="429" text-anchor="middle" class="sub">field checklist / proof gap</text>
+        </g>
+        <g>
+          <rect x="1314" y="386" width="174" height="64" rx="6" fill="#0f172a"/>
+          <rect x="1314" y="386" width="174" height="64" rx="6" fill="rgba(136,19,55,.4)" stroke="#fb7185" stroke-width="1.5"/>
+          <text x="1401" y="411" text-anchor="middle" class="label">fba-shipment</text>
+          <text x="1401" y="429" text-anchor="middle" class="sub">labels / inventory / inbound</text>
+        </g>
+        <g>
+          <rect x="1118" y="474" width="174" height="64" rx="6" fill="#0f172a"/>
+          <rect x="1118" y="474" width="174" height="64" rx="6" fill="rgba(6,78,59,.4)" stroke="#34d399" stroke-width="1.5"/>
+          <text x="1205" y="499" text-anchor="middle" class="label">ads-planner</text>
+          <text x="1205" y="517" text-anchor="middle" class="sub">SP structure / negatives</text>
+        </g>
+        <g>
+          <rect x="1314" y="474" width="174" height="64" rx="6" fill="#0f172a"/>
+          <rect x="1314" y="474" width="174" height="64" rx="6" fill="rgba(8,51,68,.4)" stroke="#22d3ee" stroke-width="1.5"/>
+          <text x="1401" y="499" text-anchor="middle" class="label">performance-reviewer</text>
+          <text x="1401" y="517" text-anchor="middle" class="sub">scale / optimize / pause</text>
+        </g>
+
+        <!-- Skill layer connectors -->
+        <path class="edge-soft" d="M246 418 H270"/>
+        <path class="edge-soft" d="M246 506 H270"/>
+        <path class="edge-soft" d="M246 594 H270"/>
+        <path class="edge" d="M444 506 C486 506 486 542 504 542"/>
+        <path class="edge" d="M678 542 H742"/>
+        <path class="edge" d="M930 466 V510"/>
+        <path class="edge" d="M969 574 V590"/>
+        <path class="edge" d="M1056 622 C1112 622 1098 418 1118 418"/>
+        <path class="edge" d="M1292 418 H1314"/>
+        <path class="edge" d="M1401 450 V474"/>
+        <path class="edge-cyan" d="M1292 506 H1314"/>
+        <path class="edge-cyan" d="M630 420 C540 374 470 366 444 386"/>
+        <path class="edge-cyan" d="M930 420 C1018 374 1082 366 1118 386"/>
+
+        <!-- Gate ribbon -->
+        <rect x="58" y="680" width="1444" height="82" rx="10" fill="rgba(30,41,59,.5)" stroke="#94a3b8" stroke-width="1.2"/>
+        <text x="78" y="707" class="title">Gate Ribbon: decision language stays simple, but production readiness now needs validators</text>
+        <g>
+          <rect x="78" y="726" width="88" height="22" rx="11" fill="#34d399"/><text x="122" y="741" text-anchor="middle" class="gate-text">pass</text>
+          <rect x="178" y="726" width="118" height="22" rx="11" fill="#fbbf24"/><text x="237" y="741" text-anchor="middle" class="gate-text">needs_proof</text>
+          <rect x="308" y="726" width="92" height="22" rx="11" fill="#fb7185"/><text x="354" y="741" text-anchor="middle" class="gate-text">blocked</text>
+          <text x="430" y="742" class="tiny">Experts: split lifecycle state, gate decision, and post-launch action; add schema validator before true pass.</text>
+        </g>
+
+        <!-- Artifact and proof layer -->
+        <rect x="38" y="794" width="1484" height="168" rx="12" class="region"/>
+        <text x="58" y="820" class="title">Evidence + Artifact Layer</text>
+        <g>
+          <rect x="72" y="842" width="198" height="84" rx="6" fill="#0f172a"/>
+          <rect x="72" y="842" width="198" height="84" rx="6" fill="rgba(76,29,149,.36)" stroke="#a78bfa" stroke-width="1.5"/>
+          <text x="171" y="866" text-anchor="middle" class="label">Identity Contract</text>
+          <text x="171" y="884" text-anchor="middle" class="sub">candidate_id / sku / asin / launch_id</text>
+          <text x="171" y="902" text-anchor="middle" class="sub">single join path across all files</text>
+        </g>
+        <g>
+          <rect x="300" y="842" width="210" height="84" rx="6" fill="#0f172a"/>
+          <rect x="300" y="842" width="210" height="84" rx="6" fill="rgba(120,53,15,.34)" stroke="#fbbf24" stroke-width="1.5"/>
+          <text x="405" y="866" text-anchor="middle" class="label">Proof Ledger</text>
+          <text x="405" y="884" text-anchor="middle" class="sub">evidence_matrix / claim_ledger</text>
+          <text x="405" y="902" text-anchor="middle" class="sub">must stop oral confirmation pass</text>
+        </g>
+        <g>
+          <rect x="540" y="842" width="210" height="84" rx="6" fill="#0f172a"/>
+          <rect x="540" y="842" width="210" height="84" rx="6" fill="rgba(6,78,59,.4)" stroke="#34d399" stroke-width="1.5"/>
+          <text x="645" y="866" text-anchor="middle" class="label">Commercial Model</text>
+          <text x="645" y="884" text-anchor="middle" class="sub">landed cost / break-even ACOS</text>
+          <text x="645" y="902" text-anchor="middle" class="sub">needs TCO + fee sources</text>
+        </g>
+        <g>
+          <rect x="780" y="842" width="210" height="84" rx="6" fill="#0f172a"/>
+          <rect x="780" y="842" width="210" height="84" rx="6" fill="rgba(136,19,55,.4)" stroke="#fb7185" stroke-width="1.5"/>
+          <text x="885" y="866" text-anchor="middle" class="label">Manual Proof</text>
+          <text x="885" y="884" text-anchor="middle" class="sub">Seller Central / FBA screenshots</text>
+          <text x="885" y="902" text-anchor="middle" class="sub">required before next gate</text>
+        </g>
+        <g>
+          <rect x="1020" y="842" width="210" height="84" rx="6" fill="#0f172a"/>
+          <rect x="1020" y="842" width="210" height="84" rx="6" fill="rgba(8,51,68,.4)" stroke="#22d3ee" stroke-width="1.5"/>
+          <text x="1125" y="866" text-anchor="middle" class="label">Operating Metrics</text>
+          <text x="1125" y="884" text-anchor="middle" class="sub">weekly metrics / search terms</text>
+          <text x="1125" y="902" text-anchor="middle" class="sub">block scale on missing data</text>
+        </g>
+        <g>
+          <rect x="1260" y="842" width="210" height="84" rx="6" fill="#0f172a"/>
+          <rect x="1260" y="842" width="210" height="84" rx="6" fill="rgba(251,146,60,.3)" stroke="#fb923c" stroke-width="1.5"/>
+          <text x="1365" y="866" text-anchor="middle" class="label">Control Artifacts</text>
+          <text x="1365" y="884" text-anchor="middle" class="sub">workflow_state / manifests</text>
+          <text x="1365" y="902" text-anchor="middle" class="sub">recommended next hardening</text>
+        </g>
+
+        <!-- Legend outside regions -->
+        <g transform="translate(58 982)">
+          <rect x="0" y="-10" width="1444" height="34" rx="8" fill="rgba(15,23,42,.72)" stroke="#1e293b"/>
+          <circle cx="22" cy="7" r="5" fill="#34d399"/><text x="34" y="10" class="tiny">generated artifacts / strong coverage</text>
+          <circle cx="282" cy="7" r="5" fill="#22d3ee"/><text x="294" y="10" class="tiny">orchestration / live-data / feedback loop</text>
+          <circle cx="602" cy="7" r="5" fill="#fbbf24"/><text x="614" y="10" class="tiny">evidence-dependent controls</text>
+          <circle cx="872" cy="7" r="5" fill="#fb7185"/><text x="884" y="10" class="tiny">manual execution / production risk</text>
+          <circle cx="1168" cy="7" r="5" fill="#a78bfa"/><text x="1180" y="10" class="tiny">reporting / contracts / handoff packages</text>
+        </g>
+      </svg>
+
+      <div class="caption">
+        <div><b>Current architecture:</b> the flow is now a 14-skill launch system coordinated by `amazon-jp-sop-orchestrator`, with live data intake, sourcing/QC, Launch Gate, Seller Central, FBA, Ads, and performance review.</div>
+        <div><b>Expert review overlay:</b> the diagram intentionally marks manual proof, validators, manifests, and golden-run evidence as the next hardening layer before calling it production-ready.</div>
+      </div>
+    </main>
+
+    <section class="cards" aria-label="architecture notes">
+      <article class="card">
+        <div class="card-header"><span class="card-dot green"></span><h3>已强覆盖</h3></div>
+        <ul>
+          <li>选品、评分、风险、Listing/A+、广告启动</li>
+          <li>统一 `candidate_id / sku / launch_id`</li>
+          <li>G0-G12 Gate 和 artifact contract</li>
+        </ul>
+      </article>
+      <article class="card">
+        <div class="card-header"><span class="card-dot amber"></span><h3>证据依赖</h3></div>
+        <ul>
+          <li>类目合规、IP、JAN/GTIN、claim proof</li>
+          <li>FBA fee、关税、供应商样品和 QC</li>
+          <li>需要真实文件、截图、报告和来源时间</li>
+        </ul>
+      </article>
+      <article class="card">
+        <div class="card-header"><span class="card-dot rose"></span><h3>仍需人工闭环</h3></div>
+        <ul>
+          <li>Seller Central 上传与 ASIN 状态</li>
+          <li>FNSKU、箱唛、入仓接收、危险品审核</li>
+          <li>人工步骤必须绑定 proof 才能推进</li>
+        </ul>
+      </article>
+      <article class="card">
+        <div class="card-header"><span class="card-dot cyan"></span><h3>下一步硬化</h3></div>
+        <ul>
+          <li>schema validator 与 required-control 检查</li>
+          <li>report/artifact manifest、run history</li>
+          <li>真实 SKU golden run 作为回归样例</li>
+        </ul>
+      </article>
+    </section>
+
+    <footer>
+      Generated from current /Users/yunzhe/workspace/amazonjp skills · no external image dependency · architecture.html
+    </footer>
+  </div>
+</body>
+</html>

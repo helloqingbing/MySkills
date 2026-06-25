@@ -1,0 +1,6 @@
+interface:
+  display_name: "Amazon Risk Auditor"
+  short_description: "Audit Amazon Japan launch and compliance risk"
+  default_prompt: "Use $amazon-risk-auditor to flag compliance, IP, logistics, and category risks for Amazon Japan product ideas."
+policy:
+  allow_implicit_invocation: true

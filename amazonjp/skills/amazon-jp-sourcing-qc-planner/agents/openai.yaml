@@ -1,0 +1,4 @@
+interface:
+  display_name: "Amazon JP Sourcing QC Planner"
+  short_description: "Plan supplier selection, samples, and QC checks"
+  default_prompt: "Use $amazon-jp-sourcing-qc-planner to convert supplier quotes and review pain into a QC-ready launch package."
