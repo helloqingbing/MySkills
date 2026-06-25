@@ -1,0 +1,4 @@
+interface:
+  display_name: "Amazon JP Performance Reviewer"
+  short_description: "Review Amazon JP launch metrics and produce actions"
+  default_prompt: "Use $amazon-jp-performance-reviewer to run a 7/14/30-day Amazon JP launch review with clear operating actions."

@@ -1,0 +1,6 @@
+interface:
+  display_name: "Amazon Data Ingestor"
+  short_description: "Normalize Amazon Japan research exports"
+  default_prompt: "Use $amazon-data-ingestor to normalize my Amazon Japan niche, product, and search-term exports."
+policy:
+  allow_implicit_invocation: true

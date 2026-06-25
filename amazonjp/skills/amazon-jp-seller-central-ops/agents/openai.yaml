@@ -1,0 +1,4 @@
+interface:
+  display_name: "Amazon JP Seller Central Ops"
+  short_description: "Create Seller Central listing execution checklists"
+  default_prompt: "Use $amazon-jp-seller-central-ops to turn an approved Amazon JP listing package into Seller Central upload tasks."

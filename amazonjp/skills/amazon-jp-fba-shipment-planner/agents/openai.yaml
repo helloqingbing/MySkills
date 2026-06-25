@@ -1,0 +1,4 @@
+interface:
+  display_name: "Amazon JP FBA Shipment Planner"
+  short_description: "Plan FBA shipment and replenishment execution"
+  default_prompt: "Use $amazon-jp-fba-shipment-planner to prepare Amazon JP FBA shipment quantities, labels, and inventory alerts."

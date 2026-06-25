@@ -1,0 +1,6 @@
+interface:
+  display_name: "Amazon Radar Report"
+  short_description: "Create Amazon Japan opportunity radar reports"
+  default_prompt: "Use $amazon-radar-report to create a concise Amazon Japan breakout product radar report from scored niches and risks."
+policy:
+  allow_implicit_invocation: true

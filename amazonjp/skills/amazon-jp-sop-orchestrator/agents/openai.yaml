@@ -1,0 +1,4 @@
+interface:
+  display_name: "Amazon JP SOP Orchestrator"
+  short_description: "Amazon JP launch workflow orchestration"
+  default_prompt: "Use $amazon-jp-sop-orchestrator to run an Amazon Japan launch from research through post-launch optimization."

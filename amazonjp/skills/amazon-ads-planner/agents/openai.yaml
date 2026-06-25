@@ -1,0 +1,6 @@
+interface:
+  display_name: "Amazon Ads Planner"
+  short_description: "Plan Amazon Japan ads campaigns and bids"
+  default_prompt: "Use $amazon-ads-planner to create Amazon Japan Sponsored Products campaigns, budgets, bids, negatives, and a 30-day optimization plan."
+policy:
+  allow_implicit_invocation: true

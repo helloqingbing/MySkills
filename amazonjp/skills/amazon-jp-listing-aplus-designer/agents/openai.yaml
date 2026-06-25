@@ -1,0 +1,4 @@
+interface:
+  display_name: "Amazon JP Listing + A+"
+  short_description: "Amazon Japan listing and A+ design"
+  default_prompt: "Use $amazon-jp-listing-aplus-designer to create an Amazon Japan product listing and A+ design brief."

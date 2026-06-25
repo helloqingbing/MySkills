@@ -1,0 +1,6 @@
+interface:
+  display_name: "Amazon Opportunity Scorer"
+  short_description: "Rank Amazon Japan breakout candidates"
+  default_prompt: "Use $amazon-opportunity-scorer to rank Amazon Japan niches and products by breakout potential."
+policy:
+  allow_implicit_invocation: true
