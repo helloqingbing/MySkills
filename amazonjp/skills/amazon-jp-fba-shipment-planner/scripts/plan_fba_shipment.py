@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 import argparse
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "amazon-jp-sop-orchestrator/scripts"))
+from approval_contract import ApprovalContext
+
 import csv
 import math
 from datetime import date, timedelta
-from pathlib import Path
 
 PROOF_FIELDS = ("fnsku_label_file", "carton_label_file", "box_content_file", "shipment_plan_file")
 
@@ -16,7 +20,8 @@ def read_csv(path):
 
 
 def has_pass(path, sku):
-    return sum(row.get("sku") == sku and row.get("decision") == "pass" for row in read_csv(path)) == 1
+    matching = [row for row in read_csv(path) if row.get("sku") == sku]
+    return len(matching) == 1 and matching[0].get("decision") == "pass"
 
 
 def parse_number(value, default=None):
@@ -155,6 +160,8 @@ def main():
     parser.add_argument("--shipment-proof", help="CSV with sku and four proof file paths")
     parser.add_argument("--gate-decision", required=True)
     parser.add_argument("--seller-decision", required=True)
+    parser.add_argument("--workspace", required=True)
+    parser.add_argument("--launch-id", required=True)
     parser.add_argument("--output-prefix", default="fba")
     args = parser.parse_args()
 
@@ -176,6 +183,13 @@ def main():
         sku = get(inv, "sku", "SKU", "seller_sku")
         if not has_pass(args.gate_decision, sku) or not has_pass(args.seller_decision, sku):
             parser.error(f"Launch Gate and Seller Central must pass for SKU {sku}")
+        try:
+            context = ApprovalContext(args.workspace, args.launch_id, sku, "G10")
+            context.decision("G6", args.gate_decision)
+            context.decision("G9", args.seller_decision)
+            context.economics()
+        except (ValueError, OSError, KeyError) as error:
+            parser.error(str(error))
         rows.append(plan_row(inv, specs_by_sku.get(sku, {}), sales_by_sku.get(sku, {}), proof_by_sku.get(sku, {})))
 
     fields = [

@@ -140,3 +140,12 @@ For a mature launch, maintain:
 - `ads_search_term_feedback.csv`
 - `launch_metrics_weekly.csv`
 - `performance.actions.csv`
+
+## Approval lineage and weekly loop
+
+Downstream scripts now require `--workspace` and `--launch-id` and verify recorded
+approval snapshots and hashes. Follow the bound approval contract in
+`references/artifact-contracts.md`. G11 approval includes `<prefix>.economics.csv`.
+G12 accepts the reviewer's separate `gate_decision=pass`, keeps business action
+(scale/optimize/watch/pause), and stays at G12 in `optimizing` for subsequent weeks.
+Do not relabel a business action as pass or mark the launch permanently complete.

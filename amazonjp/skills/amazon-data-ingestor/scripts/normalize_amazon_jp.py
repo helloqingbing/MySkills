@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import csv
+import math
 import os
 import re
 
@@ -83,6 +84,12 @@ MAPPINGS = {
         "Package Weight g": "package_weight_g",
         "Carton Qty": "carton_qty",
         "Certifications": "certifications",
+        "sample_status": "sample_status",
+        "Sample Status": "sample_status",
+        "unit_cost_jpy": "unit_cost_jpy",
+        "moq": "moq",
+        "lead_time_days": "lead_time_days",
+        "certifications": "certifications",
         "Notes": "quote_notes",
     },
     "ad_search_terms": {
@@ -151,7 +158,13 @@ def clean_value(field, value):
         "clicks",
         "orders",
     }:
-        return re.sub(r"[^0-9.]", "", value)
+        cleaned = value.replace(",", "")
+        if not re.fullmatch(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)", cleaned):
+            raise ValueError(f"invalid numeric {field}: {value}")
+        number = float(cleaned)
+        if not math.isfinite(number) or number < 0:
+            raise ValueError(f"invalid nonnegative {field}: {value}")
+        return cleaned
     return value
 
 

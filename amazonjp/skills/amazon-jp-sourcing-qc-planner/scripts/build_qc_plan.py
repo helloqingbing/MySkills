@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import csv
+import math
 
 
 DEFAULT_QC_CHECKS = [
@@ -24,11 +25,12 @@ def read_csv(path):
 def parse_number(value):
     text = str(value or "").replace(",", "").replace("￥", "").strip()
     if not text:
-        return 0.0
+        return None
     try:
-        return float(text)
+        number = float(text)
+        return number if math.isfinite(number) else None
     except ValueError:
-        return 0.0
+        return None
 
 
 def get(row, *names):
@@ -45,17 +47,23 @@ def supplier_score(row):
     certs = get(row, "certifications", "Certifications")
     sample = get(row, "sample_status", "Sample Status")
     score = 100
-    if cost <= 0:
+    if cost is None or cost <= 0:
         score -= 25
-    if moq > 1000:
+    if moq is not None and moq > 1000:
         score -= 10
-    if lead > 45:
+    if lead is not None and lead > 45:
         score -= 10
     if not certs:
         score -= 15
     if sample.lower() not in {"pass", "approved", "ok"}:
         score -= 20
-    decision = "pass" if score >= 75 else "needs_proof" if score >= 50 else "blocked"
+    invalid = any(value is not None and value <= 0 for value in (cost, moq)) or (lead is not None and lead < 0)
+    rejected_sample = sample.lower() in {"fail", "failed", "reject", "rejected", "blocked"}
+    complete = (all(value is not None for value in (cost, moq, lead)) and bool(certs)
+                and sample.lower() in {"pass", "approved", "ok"}
+                and bool(get(row, "sku", "SKU")) and bool(get(row, "supplier_name", "Supplier")))
+    decision = ("blocked" if invalid or rejected_sample or score < 50 else
+                "pass" if complete and score >= 75 else "needs_proof")
     return {
         "candidate_id": get(row, "candidate_id", "Candidate ID"),
         "sku": get(row, "sku", "SKU"),
@@ -73,7 +81,7 @@ def supplier_score(row):
 
 def next_supplier_action(decision):
     if decision == "pass":
-        return "request pre-production sample and QC proof pack"
+        return "retain approved sample and schedule production QC"
     if decision == "needs_proof":
         return "collect missing sample, certification, MOQ, lead time, or cost proof"
     return "do not advance supplier until economics and sample issues are resolved"

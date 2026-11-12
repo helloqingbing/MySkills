@@ -39,6 +39,45 @@ def write_csv(path, fields, rows):
         writer.writerows(rows)
 
 
+def approved_workspace(root, sku="A", launch_id="L1", stage=12):
+    """Record real approvals and immutable snapshots, including a recomputed G6."""
+    root = Path(root)
+    subprocess.run([sys.executable, str(ROOT / "skills/amazon-jp-sop-orchestrator/scripts/create_launch_workspace.py"),
+                    "--output-dir", str(root)], check=True, capture_output=True)
+    proof = root / "approved-proof.pdf"
+    proof.write_bytes(b"reviewed local snapshot")
+    matrix = root / "evidence_matrix.csv"
+    evidence = [{"sku": sku, "control_ref": ref, "status": "pass", "owner": "lead",
+                 "evidence": str(proof), "evidence_source": "Seller Central",
+                 "evidence_date": date.today().isoformat()} for ref in gate.REQUIRED_CONTROLS]
+    write_csv(matrix, list(evidence[0]), evidence)
+    costs = root / "landed_cost_model.csv"
+    cost = {"sku": sku, "selling_price_jpy": "1000", "unit_cost_jpy": "400",
+            "international_freight_jpy": "50", "duty_tax_jpy": "50", "fba_fee_jpy": "50", "referral_fee_jpy": "50"}
+    write_csv(costs, list(cost), [cost])
+    economics = root / "ads.economics.csv"
+    policy = {"sku": sku, "launch_id": launch_id, "target_acos_pct": "25"}
+    write_csv(economics, list(policy), [policy])
+    keywords = root / "keywords.csv"
+    keyword = {"sku": sku, "keyword": "storage", "relevance": "high"}
+    write_csv(keywords, list(keyword), [keyword])
+    listing = root / "listing.csv"
+    write_csv(listing, ["sku", "title"], [{"sku": sku, "title": "storage"}])
+    paths = {"keywords": keywords, "listing": listing, "costs": costs, "matrix": matrix, "proof": proof, "economics": economics}
+    for i in range(stage):
+        gate_name = f"G{i}"
+        decision = root / f"G{i}.decision.csv"
+        row = {"sku": sku, "launch_id": launch_id, "gate": gate_name, "decision": "pass"}
+        if i == 10:
+            row["status"] = "pass"
+        write_csv(decision, list(row), [row])
+        evidence_files = [matrix, costs] if i == 6 else [keywords, listing] if i == 8 else [economics] if i == 11 else [proof]
+        record_gate.record(root, launch_id, sku, gate_name, "pass", "owner", "approver",
+                           evidence_files=evidence_files, decision_file=decision)
+        paths[gate_name] = decision
+    return paths
+
+
 class GateTests(unittest.TestCase):
     def setUp(self):
         folder = tempfile.TemporaryDirectory()
@@ -311,9 +350,9 @@ class OperationsTests(unittest.TestCase):
             state = record_gate.record(folder, "L1", "A", "G0", "pass", "owner", "approver",
                                        evidence_files=[str(proof_path)], decision_file=str(decision_path))
             self.assertEqual(state["current_gate"], "G1")
-            with self.assertRaises(ValueError):
-                record_gate.record(folder, "L1", "A", "G0", "pass", "owner", "approver",
-                                   evidence_files=[str(proof_path)], decision_file=str(decision_path))
+            retried = record_gate.record(folder, "L1", "A", "G0", "pass", "owner", "approver",
+                                         evidence_files=[str(proof_path)], decision_file=str(decision_path))
+            self.assertEqual(retried, state)
             with open(Path(folder) / "gate_decisions.csv", encoding="utf-8") as f:
                 self.assertEqual(len(list(csv.DictReader(f))), 1)
 
@@ -346,17 +385,19 @@ class GoldenRunTests(unittest.TestCase):
             raw = root / "raw"
             raw.mkdir()
             today = date.today().isoformat()
+            week_start = (date.today() - timedelta(days=7)).isoformat()
+            week_end = (date.today() - timedelta(days=1)).isoformat()
             specs = {
                 "business": (["SKU", "Sessions", "Units Ordered", "Sales"],
                              [{"SKU": "SKU-A", "Sessions": "100", "Units Ordered": "10", "Sales": "10000"}]),
                 "search-terms": (["SKU", "Customer Search Term", "Spend", "Orders", "Sales"],
                                  [{"SKU": "SKU-A", "Customer Search Term": "収納", "Spend": "100", "Orders": "2", "Sales": "1000"}]),
-                "inventory": (["SKU", "Fulfillable Quantity"],
-                              [{"SKU": "SKU-A", "Fulfillable Quantity": "100"}]),
+                "inventory": (["SKU", "ASIN", "Fulfillable Quantity"],
+                              [{"SKU": "SKU-A", "ASIN": "B000000001", "Fulfillable Quantity": "100"}]),
                 "returns": (["SKU", "Return Date", "Quantity"],
-                            [{"SKU": "SKU-A", "Return Date": today, "Quantity": "0"}]),
+                            [{"SKU": "SKU-A", "Return Date": week_end, "Quantity": "0"}]),
                 "reviews": (["ASIN", "Review Date", "Rating"],
-                            [{"ASIN": "B000000001", "Review Date": today, "Rating": "4.5"}]),
+                            [{"ASIN": "B000000001", "Review Date": week_end, "Rating": "4.5"}]),
             }
             args = []
             for kind, (fields, rows) in specs.items():
@@ -365,7 +406,7 @@ class GoldenRunTests(unittest.TestCase):
                 args.extend([f"--{kind}", str(path)])
             output = root / "live"
             subprocess.run([sys.executable, str(ROOT / "skills/amazon-jp-live-data-sync/scripts/normalize_live_reports.py"),
-                            *args, "--period-start", today, "--report-end", today,
+                            *args, "--period-start", week_start, "--report-end", week_end,
                             "--exported-at", today + "T12:00:00", "--sku-scope", "SKU-A",
                             "--output-dir", str(output)], check=True, capture_output=True)
             with open(output / "report_manifest.csv", encoding="utf-8") as f:
@@ -390,15 +431,14 @@ class GoldenRunTests(unittest.TestCase):
             with open(str(gate_prefix) + ".decision.csv", encoding="utf-8") as f:
                 self.assertEqual(next(csv.DictReader(f))["decision"], "pass")
 
+            approved_workspace(root, sku="SKU-A")
             metrics = root / "metrics.csv"
-            row = {"launch_id": "L1", "sku": "SKU-A",
-                   "week_start": (date.today() - timedelta(days=7)).isoformat(),
-                   "sessions": "100", "orders": "10", "sales_jpy": "10000", "ad_spend_jpy": "1000",
-                   "acos_pct": "10", "tacos_pct": "10", "break_even_acos_pct": "25",
-                   "unit_session_pct": "10", "rating": "4.5", "returns": "0", "days_of_supply": "40"}
+            row = {"launch_id": "L1", "sku": "SKU-A", "week_start": week_start,
+                   "break_even_acos_pct": "25"}
             write_csv(metrics, list(row), [row])
             prefix = root / "performance"
             subprocess.run([sys.executable, str(ROOT / "skills/amazon-jp-performance-reviewer/scripts/review_performance.py"),
+                            "--workspace", str(root), "--launch-id", "L1",
                             "--metrics", str(metrics), "--search-terms", str(output / "ads_search_terms.normalized.csv"),
                             "--inventory", str(output / "inventory.normalized.csv"),
                             "--returns", str(output / "returns.normalized.csv"),

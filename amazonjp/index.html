@@ -452,6 +452,18 @@
       .step .gate { grid-column: auto; }
       .num { min-height: 42px; }
     }
+    .usage-list { display:grid; gap:20px; }
+    .usage-step { padding:24px; border:1px solid var(--line); border-left:3px solid var(--cyan); border-radius:14px; background:var(--panel); min-width:0; }
+    .usage-step h3 { margin:0 0 12px; font-size:20px; }
+    .usage-step p { color:var(--muted); line-height:1.8; }
+    .usage-step pre { white-space:pre-wrap; overflow-wrap:anywhere; background:#071013; padding:16px; border-radius:8px; line-height:1.7; font-size:12px; }
+    .usage-step summary { cursor:pointer; color:var(--cyan); padding:12px 0; }
+    .io-label { display:inline-block; font-size:11px; letter-spacing:.12em; color:var(--cyan); margin-top:8px; }
+    .expected { border-top:1px solid var(--line); margin-top:16px; padding-top:12px; }
+    .expected .io-label { color:var(--green); }
+    .matrix-frame { overflow-x:auto; }
+    .usage-note { padding:18px; border:1px solid var(--amber); border-radius:10px; line-height:1.8; color:var(--muted); margin-bottom:20px; }
+    @media (max-width:600px) { .usage-step { padding:16px; } .usage-step h3 { font-size:18px; } }
   </style>
 </head>
 <body>
@@ -461,13 +473,13 @@
         <div class="eyebrow">Usage guide / Amazon Japan launch system</div>
         <h1>从选品到复盘，这套流程怎么跑</h1>
         <p class="lead">
-          这不是一张只用来看的流程图，而是一套可执行的工作流。每个候选品都用同一组 ID 串联数据、证据、Listing、广告和复盘；每个阶段必须留下产出物和 Gate 状态，才能进入下一步。
+          以一个 SKU、一次 launch 为主线：从证据采集与成本核验，到人工上架、广告计划与每周复盘。下面给出 Agent 的具体输入、命令和预期输出；所有示例按当前脚本与审批契约编写。
         </p>
       </div>
       <div class="control-strip">
         <div class="control-title">最小可执行闭环</div>
         <div class="control-grid">
-          <div class="metric"><strong>12</strong><span>阶段：实时数据、选品、QC、门禁、上架、FBA、投放、复盘</span></div>
+          <div class="metric"><strong>13</strong><span>Gate：G0–G12；G12 按完整周循环</span></div>
           <div class="metric"><strong>14</strong><span>skills：覆盖研究、供应链、Seller Central、FBA 和经营复盘</span></div>
           <div class="metric"><strong>3</strong><span>Gate 结果：Pass、Needs Proof、Blocked</span></div>
           <div class="metric"><strong>1</strong><span>总控：amazon-jp-sop-orchestrator 维护状态机和交接包</span></div>
@@ -477,13 +489,39 @@
 
     <section class="matrix-section" id="matrix">
       <div class="matrix-head">
-        <h2>覆盖矩阵架构图</h2>
-        <p>这里直接嵌入固定截图，用它确认全局覆盖：绿色是强覆盖，蓝色是门禁/编排，黄色是证据依赖，红色是需要人工或外部系统执行的环节。</p>
+        <h2>当前执行逻辑</h2>
+        <p>每次推进都绑定 launch、SKU、Gate 审批记录和文件 SHA-256。计划生成后由运营执行，下一周回收真实数据。</p>
       </div>
       <div class="matrix-frame">
-        <img src="./assets/architecture-coverage.png" alt="Amazon Japan 从选品到上架、投放、复盘的流程覆盖矩阵架构图">
+        <svg viewBox="0 0 1100 330" role="img" aria-labelledby="flow-title flow-desc" style="display:block;width:100%;min-width:780px;font-family:'JetBrains Mono',monospace">
+          <title id="flow-title">Amazon JP 审批与每周复盘闭环</title>
+          <desc id="flow-desc">研究 G0 到 G5、成本证据 G6、内容 G7 G8、后台 G9、FBA G10、广告 G11；G12 每周复盘并返回运营动作。审批快照在各下游阶段核验。</desc>
+          <defs><marker id="flow-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#45d8ff"/></marker></defs>
+          <g fill="none" stroke="#45d8ff" stroke-width="1.5" marker-end="url(#flow-arrow)">
+            <path d="M185 75H220"/><path d="M390 75H425"/><path d="M595 75H630"/><path d="M800 75H835"/>
+            <path d="M920 115V170H720V205"/><path d="M630 245H530"/><path d="M350 245H230V115" stroke-dasharray="5 5"/>
+          </g>
+          <g fill="#102328" stroke="#45d8ff">
+            <rect x="15" y="35" width="170" height="80" rx="8"/><rect x="220" y="35" width="170" height="80" rx="8"/>
+            <rect x="425" y="35" width="170" height="80" rx="8"/><rect x="630" y="35" width="170" height="80" rx="8"/>
+            <rect x="835" y="35" width="245" height="80" rx="8"/>
+            <rect x="630" y="205" width="180" height="80" rx="8" stroke="#56f0b1"/><rect x="350" y="205" width="180" height="80" rx="8" stroke="#56f0b1"/>
+          </g>
+          <g fill="#eef7f2" font-size="15" text-anchor="middle">
+            <text x="100" y="66">G0–G5 研究与验证</text><text x="305" y="66">G6 成本与证据</text>
+            <text x="510" y="66">G7–G8 产品与内容</text><text x="715" y="66">G9 后台执行</text>
+            <text x="957" y="66">G10 FBA → G11 广告</text><text x="720" y="238">G12 每周复盘</text><text x="440" y="238">执行调整 / 再采集</text>
+          </g>
+          <g fill="#9bb0aa" font-size="12" text-anchor="middle">
+            <text x="100" y="91">数据 / 样品 / QC</text><text x="305" y="91">8 项控制 + 毛利 ≥35%</text><text x="510" y="91">需求 / 日文 Listing</text>
+            <text x="715" y="91">字段与独立操作凭证</text><text x="957" y="91">运输凭证 / 已批准 ACOS</text>
+            <text x="720" y="263">5 类报表 · 完整 7 天</text><text x="440" y="263">保留 G12 / optimizing</text>
+            <text x="550" y="155">本地审批记录 + 不可覆盖的证据快照 → 下游重新校验</text>
+            <text x="550" y="318">修改已批准的成本或证据：开启新的审计 launch；周报使用独立日期目录</text>
+          </g>
+        </svg>
       </div>
-      <p class="matrix-caption">上方图片是已确认的覆盖基线；下方执行表已补齐实时数据、供应商/QC、Seller Central、FBA 和经营复盘模块。</p>
+      <p class="matrix-caption">图示对应当前代码。G12 的 gate_decision 表示复盘是否完成，decision 表示经营动作；两者独立。</p>
     </section>
 
     <div class="rail">
@@ -491,11 +529,11 @@
         <nav class="nav-card">
           <h2>阅读顺序</h2>
           <ol>
-            <li><a href="#matrix"><b>1</b><span>先看覆盖矩阵图</span></a></li>
+            <li><a href="#matrix"><b>1</b><span>先看执行逻辑</span></a></li>
             <li><a href="#rules"><b>2</b><span>再看运行规则</span></a></li>
             <li><a href="#timeline"><b>3</b><span>按阶段执行</span></a></li>
             <li><a href="#skills"><b>4</b><span>理解 skills 分工</span></a></li>
-            <li><a href="#prompts"><b>5</b><span>复制 ChatGPT 指令</span></a></li>
+            <li><a href="#prompts"><b>5</b><span>Agent 输入与输出</span></a></li>
             <li><a href="#handoff"><b>6</b><span>检查交付物</span></a></li>
             <li><a href="#status"><b>7</b><span>判断下一步</span></a></li>
           </ol>
@@ -526,17 +564,17 @@
             <article class="rule">
               <small>Gate</small>
               <h3>没有门禁不推进</h3>
-              <p>任何阶段都必须给出 <code>pass</code>、<code>needs_proof</code> 或 <code>blocked</code>，特别是 Listing、FBA、广告前。</p>
+              <p>使用 <code>record_gate.py</code> 顺序记录审批。Seller / FBA / Ads / Review 必须传入 workspace 与 launch_id；只有旧 pass CSV 无法推进。</p>
             </article>
             <article class="rule">
               <small>Proof</small>
               <h3>证据先于结论</h3>
-              <p>合规、功效宣称、认证、成本、毛利、样品 QC 都要进入 <code>evidence_matrix.csv</code>。</p>
+              <p>G6 重算成本并验证八项控制；本地证据及其摘要纳入审批快照。下游会检查文件是否改变，人工利润字段不能覆盖已批准成本。</p>
             </article>
             <article class="rule">
               <small>Loop</small>
               <h3>投放数据回流</h3>
-              <p>搜索词、ACOS、TACOS、评论、退货原因要回到关键词、Listing、A+、产品规格和广告结构。</p>
+              <p>G12 使用完整七天的五类报表。经营结论为 scale / optimize / watch / pause / needs_proof；下一周继续 G12，重复审批不增加记录。</p>
             </article>
           </div>
         </section>
@@ -548,84 +586,79 @@
           </div>
           <div class="timeline">
             <div class="step">
-              <div class="num">1</div>
+              <div class="num">G0</div>
               <div><h3>实时数据同步</h3><p>导入 Seller Central、Amazon Ads、库存、退货、评论和业务报表。</p></div>
               <div><h3>调用</h3><p><code>amazon-jp-live-data-sync</code></p></div>
               <div><h3>产出</h3><ul><li><code>live_data/*.normalized.csv</code></li><li><code>live_data_quality_note.md</code></li></ul></div>
               <div class="gate"><span class="tag tag-cyan">数据新鲜</span></div>
             </div>
             <div class="step">
-              <div class="num">2</div>
+              <div class="num">G1</div>
               <div><h3>数据与选品</h3><p>输入 POE、SQP、竞品 ASIN、供应商报价、广告搜索词初始数据。</p></div>
               <div><h3>调用</h3><p><code>amazon-data-ingestor</code></p></div>
               <div><h3>产出</h3><ul><li><code>normalized/*.csv</code></li><li>统一字段与 ID</li></ul></div>
               <div class="gate"><span class="tag tag-green">字段完整</span></div>
             </div>
             <div class="step">
-              <div class="num">3</div>
+              <div class="num">G2</div>
               <div><h3>机会评分</h3><p>根据需求、增长、竞争、价格、评分、评论数和风险扣分排序。</p></div>
               <div><h3>调用</h3><p><code>amazon-opportunity-scorer</code></p></div>
               <div><h3>产出</h3><ul><li><code>opportunities.csv</code></li><li>A/B/C/Reject 候选池</li></ul></div>
               <div class="gate"><span class="tag tag-green">A/B 继续</span></div>
             </div>
             <div class="step">
-              <div class="num">4</div>
+              <div class="num">G3</div>
               <div><h3>风险与雷达</h3><p>筛掉品牌垄断、IP、FBA 限制、季节性、退货率和类目风险。</p></div>
               <div><h3>调用</h3><p><code>amazon-risk-auditor</code><br><code>amazon-radar-report</code></p></div>
               <div><h3>产出</h3><ul><li>risk audit</li><li>shortlist 与 7 日验证计划</li></ul></div>
               <div class="gate"><span class="tag tag-amber">需证据</span></div>
             </div>
             <div class="step">
-              <div class="num">5</div>
+              <div class="num">G4</div>
               <div><h3>供应商与 QC</h3><p>把报价、样品、评论痛点、包装和 claim proof 变成可验收标准。</p></div>
               <div><h3>调用</h3><p><code>amazon-jp-sourcing-qc-planner</code></p></div>
               <div><h3>产出</h3><ul><li><code>supplier_scorecard.csv</code></li><li><code>qc_checklist.csv</code></li></ul></div>
               <div class="gate"><span class="tag tag-amber">样品可验</span></div>
             </div>
             <div class="step">
-              <div class="num">6</div>
+              <div class="num">G5</div>
               <div><h3>商业验证</h3><p>补真实报价、样品、QC、Keepa 趋势、头程、FBA fee 与目标售价。</p></div>
               <div><h3>调用</h3><p>外部资料 + <code>amazon-data-ingestor</code></p></div>
               <div><h3>产出</h3><ul><li><code>supplier_quote.csv</code></li><li><code>landed_cost_model.csv</code></li></ul></div>
               <div class="gate"><span class="tag tag-amber">毛利达标</span></div>
             </div>
             <div class="step">
-              <div class="num">7</div>
+              <div class="num">G6</div>
               <div><h3>Launch Gate</h3><p>在上架前统一检查类目、GTIN/JAN、IP、标签认证、进口/FBA、claim proof。</p></div>
               <div><h3>调用</h3><p><code>amazon-jp-launch-gate</code></p></div>
               <div><h3>产出</h3><ul><li><code>evidence_matrix.csv</code></li><li>launch gate report</li></ul></div>
               <div class="gate"><span class="tag tag-cyan">硬门禁</span></div>
             </div>
+            <div class="step"><div class="num">G7</div><div><h3>产品定义</h3><p>从评论与样品提出必须修复的产品要求，保留证据。</p></div><div><h3>调用</h3><p><code>amazon-review-miner</code></p></div><div><h3>产出</h3><p><code>product_requirements.csv</code></p></div><div class="gate"><span class="tag tag-green">需求评审</span></div></div>
+            <div class="step"><div class="num">G8</div><div><h3>内容与关键词</h3><p>形成日文 Listing、A+、图片简报与有证据的 claim ledger。</p></div><div><h3>调用</h3><p><code>amazon-jp-listing-aplus-designer</code></p></div><div><h3>产出</h3><p><code>listing_package.md</code><br><code>amazon_keyword_master.csv</code></p></div><div class="gate"><span class="tag tag-green">内容评审</span></div></div>
             <div class="step">
-              <div class="num">8</div>
-              <div><h3>产品与内容</h3><p>从差评提炼产品改进点，再生成日文 Listing、A+ 模块、图片简报和关键词主表。</p></div>
-              <div><h3>调用</h3><p><code>amazon-review-miner</code><br><code>amazon-jp-listing-aplus-designer</code></p></div>
-              <div><h3>产出</h3><ul><li><code>product_requirements.csv</code></li><li><code>amazon_keyword_master.csv</code></li></ul></div>
-              <div class="gate"><span class="tag tag-green">内容就绪</span></div>
-            </div>
-            <div class="step">
-              <div class="num">9</div>
+              <div class="num">G9</div>
               <div><h3>Seller Central</h3><p>把上市包转成后台字段、flat file、A+ 提交和人工操作清单。</p></div>
               <div><h3>调用</h3><p><code>amazon-jp-seller-central-ops</code></p></div>
               <div><h3>产出</h3><ul><li><code>seller_central.checklist.csv</code></li><li><code>seller_central.ops_log.csv</code></li></ul></div>
               <div class="gate"><span class="tag tag-red">人工上传</span></div>
             </div>
             <div class="step">
-              <div class="num">10</div>
+              <div class="num">G10</div>
               <div><h3>FBA 入仓</h3><p>计算首批/补货数量，检查 FNSKU、箱规、标签、box content 和断货风险。</p></div>
               <div><h3>调用</h3><p><code>amazon-jp-fba-shipment-planner</code></p></div>
               <div><h3>产出</h3><ul><li><code>fba.shipment_plan.csv</code></li><li><code>fba.replenishment_alerts.csv</code></li></ul></div>
               <div class="gate"><span class="tag tag-red">入仓确认</span></div>
             </div>
             <div class="step">
-              <div class="num">11</div>
+              <div class="num">G11</div>
               <div><h3>广告投放</h3><p>基于关键词主表、盈亏平衡 ACOS、预算和竞品 ASIN 建 Sponsored Products 结构。</p></div>
               <div><h3>调用</h3><p><code>amazon-ads-planner</code></p></div>
-              <div><h3>产出</h3><ul><li><code>campaigns.csv</code></li><li><code>negatives.csv</code></li><li>30-day plan</li></ul></div>
+              <div><h3>产出</h3><ul><li><code>ads.campaigns.csv / ads.targets.csv</code></li><li><code>ads.economics.csv / ads.negatives.csv</code></li><li>30-day plan</li></ul></div>
               <div class="gate"><span class="tag tag-green">可上线</span></div>
             </div>
             <div class="step">
-              <div class="num">12</div>
+              <div class="num">G12</div>
               <div><h3>复盘回流</h3><p>每周回收搜索词、广告、库存、评论和退货数据，决定放量、否词、改文案、补货或停测。</p></div>
               <div><h3>调用</h3><p><code>amazon-jp-performance-reviewer</code><br><code>amazon-jp-sop-orchestrator</code></p></div>
               <div><h3>产出</h3><ul><li><code>performance.actions.csv</code></li><li><code>performance.alerts.csv</code></li></ul></div>
@@ -726,7 +759,7 @@
               <h3><code>amazon-jp-listing-aplus-designer</code></h3>
               <p>解决日本站 Listing、A+、图片 brief、关键词主表分散产出的问题。</p>
               <dl>
-                <div><dt>用法：</dt><dd>在 Launch Gate 不阻塞后，生成日文标题、五点、描述、A+ 模块和图片说明。</dd></div>
+                <div><dt>用法：</dt><dd>在 G6 审批通过后，生成日文标题、五点、描述、A+ 模块和图片说明。</dd></div>
                 <div><dt>产出：</dt><dd>Listing package、A+ module map、<code>amazon_keyword_master.csv</code>。</dd></div>
               </dl>
             </article>
@@ -763,53 +796,101 @@
               <p>解决上线后只看广告、不联动库存、利润、评论和退货的问题。</p>
               <dl>
                 <div><dt>用法：</dt><dd>按 7/14/30 天或周度导入实时数据，输出经营决策。</dd></div>
-                <div><dt>产出：</dt><dd><code>performance.actions.csv</code>、告警、scale / optimize / pause / kill。</dd></div>
+                <div><dt>产出：</dt><dd><code>performance.actions.csv</code>、告警、scale / optimize / watch / pause / needs_proof。</dd></div>
               </dl>
             </article>
           </div>
         </section>
 
-        <section class="section" id="prompts">
-          <div class="section-head">
-            <h2>可直接复制的 ChatGPT 指令</h2>
-            <p>在 ChatGPT/Codex 里按阶段粘贴，替换 SKU、品类、数据文件或表格。每次都要求输出 Gate 结果和缺失证据。</p>
-          </div>
-          <div class="prompt-grid">
-            <article class="prompt">
-              <h3>创建项目工作区</h3>
-              <pre>使用 amazon-jp-sop-orchestrator，为候选品 [产品名] 创建 Amazon JP launch workspace。请生成阶段目录、artifact contract、ID 规则，并列出从 raw_data 到 optimizing 的状态机。</pre>
-            </article>
-            <article class="prompt">
-              <h3>导入实时运营数据</h3>
-              <pre>使用 amazon-jp-live-data-sync，解析我提供的 Business Report、Search Term Report、库存、退货和评论导出。请统一字段、保留 launch_id / sku / asin，并输出数据质量问题和需要立刻处理的告警。</pre>
-            </article>
-            <article class="prompt">
-              <h3>选品评分与短名单</h3>
-              <pre>使用 amazon-data-ingestor 和 amazon-opportunity-scorer，解析我提供的 POE/SQP/竞品/供应商数据。请按 Amazon Japan 跨境电商标准输出 Top N 机会、评分依据、淘汰理由和下一步验证任务。</pre>
-            </article>
-            <article class="prompt">
-              <h3>供应商与 QC</h3>
-              <pre>使用 amazon-jp-sourcing-qc-planner，把供应商报价、样品结果和竞品差评痛点转成 supplier_scorecard、qc_checklist、包装/标签要求和 launch gate 可用的证据清单。</pre>
-            </article>
-            <article class="prompt">
-              <h3>上架前硬门禁</h3>
-              <pre>使用 amazon-jp-launch-gate，检查 SKU [SKU] 是否可以进入 Listing/FBA/广告。请基于 evidence_matrix、landed_cost_model、claim ledger 输出 pass / needs_proof / blocked，并列出阻塞项。</pre>
-            </article>
-            <article class="prompt">
-              <h3>Listing、A+ 与广告</h3>
-              <pre>使用 amazon-review-miner、amazon-jp-listing-aplus-designer、amazon-ads-planner，为 SKU [SKU] 生成日文 Listing、A+ 模块图文 brief、amazon_keyword_master、SP 广告结构和 30 天优化计划。</pre>
-            </article>
-            <article class="prompt">
-              <h3>后台与 FBA 执行</h3>
-              <pre>使用 amazon-jp-seller-central-ops 和 amazon-jp-fba-shipment-planner，把 Listing 包转成 Seller Central 上传字段、人工操作日志、FBA 标签/箱规 checklist、首批发货数量和补货告警。</pre>
-            </article>
-            <article class="prompt">
-              <h3>7/14/30 天复盘</h3>
-              <pre>使用 amazon-jp-performance-reviewer，基于 weekly metrics、广告搜索词、库存、评论和退货数据，为 SKU [SKU] 输出 scale / optimize / pause / kill 决策，并列出广告、Listing、FBA、QC 的具体动作。</pre>
-            </article>
-          </div>
-        </section>
+        <section class="section" id="prompts"><div class="section-head"><h2>Agent usage：输入 → 操作 → 预期输出</h2><p>以收纳盒 SKU A / launch L1 演示完整交接。命令块可展开查看。</p></div>
+          <div class="usage-note">运行准备：Python 3.11+；完整保留 skills 同级目录。工作区是本地审批信任边界，需由团队管理写权限。示例中的 reviewer / operator 代表真实责任人，填写姓名并不替代实际审阅。已有旧工作区若缺少 approvals 快照，需要重新建立审计 launch；不能直接复用旧 pass 文件。</div>
+          <div class="usage-list"><article class="usage-step"><h3>01 / 创建工作区与身份</h3><p>示例商品：收纳盒；SKU=A；launch_id=L1。命令从本仓库根目录执行。</p><span class="io-label">AGENT INPUT</span><pre>使用 $amazon-jp-sop-orchestrator，为 SKU A、launch_id L1 在 launches/L1 创建工作区。先检查现有状态，列出 G0–G12 输入缺口；没有证据的门禁标为 needs_proof。</pre><p>输入：产品信息、负责人，以及可用的数据目录。创建目录不会自动通过任何门禁。</p><details><summary>查看对应命令 / 文件内容</summary><pre>python3 skills/amazon-jp-sop-orchestrator/scripts/create_launch_workspace.py --output-dir launches/L1</pre></details><div class="expected"><span class="io-label">EXPECTED OUTPUT</span><pre>launches/L1/ 下生成各阶段目录与 CSV 模板
+workflow_state.json：launches 为空，尚无审批
+下一步：采集 G0 数据并记录第一次门禁决定</pre></div></article><article class="usage-step"><h3>02 / 按顺序完成 G0–G5</h3><p>每个阶段先形成产物，再由明确的 owner / approver 审阅。不得批量伪造六个 pass。</p><span class="io-label">AGENT INPUT</span><pre>使用总控依次执行 G0 数据同步、G1 标准化、G2 机会评分、G3 风险审查、G4 供应商和样品 QC、G5 商业验证。输出每阶段产物与证据缺口；实际审批通过后再 record_gate。</pre><p>输入：原始导出、供应商报价、样品验收、趋势资料；每个 CSV 保留 SKU。样品缺失或失败不能放行。</p><details><summary>查看对应命令 / 文件内容</summary><pre># G0 示例，前提：decision CSV 已由审批人确认
+# g0.decision.csv 内容：
+launch_id,sku,gate,decision
+L1,A,G0,pass
 
+python3 skills/amazon-jp-sop-orchestrator/scripts/record_gate.py \
+  --workspace launches/L1 --launch-id L1 --sku A --gate G0 \
+  --decision pass --owner operator --approver reviewer \
+  --decision-file launches/L1/analysis/g0.decision.csv \
+  --evidence-file launches/L1/live_data/report_manifest.csv
+# G1–G5 分别使用本阶段的真实决定和证据，按序记录。</pre></details><div class="expected"><span class="io-label">EXPECTED OUTPUT</span><pre>产物：normalized/、机会评分、risk audit、supplier_scorecard、QC 证据与 validation 包
+全部顺序审批完成后：current_gate=G6
+缺口：needs_proof + 原因 + 负责人；停留在当前 Gate</pre></div></article><article class="usage-step"><h3>03 / G6：重算成本，绑定证据</h3><p>前提：current_gate=G6。以下数值是演示数据，真实运行须替换为可核验报价和凭证。</p><span class="io-label">AGENT INPUT</span><pre>使用 $amazon-jp-launch-gate 检查 launches/L1/launch_gate 的 evidence_matrix.csv 和 landed_cost_model.csv。输出逐项缺口及重算利润；通过并获 reviewer 审批后记录 G6。</pre><p>成本输入：售价 1000，货价 400，国际运费 50，税费 50，FBA 50，佣金 50（日元/件），其余成本留空表示 0。证据矩阵必须有八个 control_ref；每行有 owner/source/date 和非空本地凭证。仅标签认证与 claims 允许有依据的 not_applicable。</p><details><summary>查看对应命令 / 文件内容</summary><pre>python3 skills/amazon-jp-launch-gate/scripts/evaluate_launch_gate.py \
+  --evidence launches/L1/launch_gate/evidence_matrix.csv \
+  --costs launches/L1/launch_gate/landed_cost_model.csv \
+  --output-prefix launches/L1/launch_gate/launch_gate
+
+python3 skills/amazon-jp-sop-orchestrator/scripts/record_gate.py \
+  --workspace launches/L1 --launch-id L1 --sku A --gate G6 \
+  --decision pass --owner operator --approver reviewer \
+  --decision-file launches/L1/launch_gate/launch_gate.decision.csv \
+  --evidence-file launches/L1/launch_gate/evidence_matrix.csv \
+  --evidence-file launches/L1/launch_gate/landed_cost_model.csv</pre></details><div class="expected"><span class="io-label">EXPECTED OUTPUT</span><pre>重算：总成本=600；利润=400；毛利/盈亏平衡 ACOS=40%
+所有控制有效：launch_gate.decision.csv 的 decision=pass
+审批后：current_gate=G7；保存决定、成本、证据矩阵及引用凭证的摘要
+缺证明不会通过；单独一份 pass CSV 不能替代审批快照。</pre></div></article><article class="usage-step"><h3>04 / G7–G9：内容评审与后台执行</h3><p>先分别审批 G7 产品要求和 G8 Listing，再进入 G9。G8 需附 listing.csv 与 amazon_keyword_master.csv，之后只消费登记的文件。脚本生成检查清单，运营人员完成后台动作。</p><span class="io-label">AGENT INPUT</span><pre>使用 $amazon-review-miner 和 $amazon-jp-listing-aplus-designer 形成 SKU A 的产品要求、日文 Listing、claim ledger 和关键词表。G7/G8 审批后，使用 $amazon-jp-seller-central-ops 检查后台就绪度，列出待操作项。</pre><p>输入：listing.csv 的身份、标题、五点、媒体、价格、配送和合规字段；已批准的 G6 证据；ops_proof.csv 含 sku,field,evidence_file,owner,status=done。每个操作字段应有独立有效凭证。</p><details><summary>查看对应命令 / 文件内容</summary><pre>python3 skills/amazon-jp-seller-central-ops/scripts/build_seller_central_checklist.py \
+  --workspace launches/L1 --launch-id L1 \
+  --listing launches/L1/listing/listing.csv \
+  --evidence launches/L1/launch_gate/evidence_matrix.csv \
+  --gate-decision launches/L1/launch_gate/launch_gate.decision.csv \
+  --ops-proof launches/L1/seller_central/ops_proof.csv \
+  --output-prefix launches/L1/seller_central/seller_central
+# G9 记录该 decision.csv，并附 listing、checklist 与 ops_proof.csv。</pre></details><div class="expected"><span class="io-label">EXPECTED OUTPUT</span><pre>无操作证明：seller_central.decision.csv = needs_proof，即使字段完整
+字段和所有操作凭证均有效：decision=pass；审批 G9 后 current_gate=G10
+有效 CLAIMS-JP-01 not_applicable 沿用 G6 规则，不会再次误报缺证据。</pre></div></article><article class="usage-step"><h3>05 / G10：生成 FBA 计划并确认凭证</h3><p>前提：current_gate=G10，G6/G9 审批快照有效。</p><span class="io-label">AGENT INPUT</span><pre>使用 $amazon-jp-fba-shipment-planner，根据 SKU A 的库存、箱规和日销估计规划发货，检查 FNSKU、箱标、box content、shipment plan 四项凭证，输出缺口。</pre><p>输入：inventory.csv、package_specs.csv、daily_sales.csv、shipment_proof.csv。首发使用 launch_phase=prelaunch；上线后的库存不足以覆盖交期会阻塞。四项凭证路径必须独立、有效。</p><details><summary>查看对应命令 / 文件内容</summary><pre>python3 skills/amazon-jp-fba-shipment-planner/scripts/plan_fba_shipment.py \
+  --workspace launches/L1 --launch-id L1 \
+  --inventory launches/L1/fba/inventory.csv \
+  --package-specs launches/L1/fba/package_specs.csv \
+  --daily-sales launches/L1/fba/daily_sales.csv \
+  --shipment-proof launches/L1/fba/shipment_proof.csv \
+  --gate-decision launches/L1/launch_gate/launch_gate.decision.csv \
+  --seller-decision launches/L1/seller_central/seller_central.decision.csv \
+  --output-prefix launches/L1/fba/fba
+# FBA 的 status 不是 gate decision；经人工审阅另建 G10 pass 行，附该计划。</pre></details><div class="expected"><span class="io-label">EXPECTED OUTPUT</span><pre>fba.shipment_plan.csv：每个 SKU 的建议发货量、覆盖天数、status
+缺少凭证：needs_proof；有效首发计划可 pass
+人工审核 G10 决定，附 shipment_plan 和所有源输入；审批后 current_gate=G11。</pre></div></article><article class="usage-step"><h3>06 / G11：生成受成本约束的广告计划</h3><p>前提：current_gate=G11。G6、G9 决定与 G10 发货计划都须是本次 launch 登记的文件。</p><span class="io-label">AGENT INPUT</span><pre>使用 $amazon-ads-planner，为 SKU A 生成日预算 3000 日元、目标 ACOS 25% 的广告计划。只使用已批准 G6 成本；输出 campaigns、targets、negatives 和 economics，并验证预算总额及否词指向。</pre><p>products.csv：sku=A, asin=ASIN-A, daily_budget_jpy=3000, target_acos_pct=25。关键词行：sku=A, keyword=収納ボックス, relevance=high, conversion_rate_pct=10；另有 risk=blocked 的关键词会进入 Auto/Broad 否词。ASIN-A 是占位符，真实执行须换成真实 ASIN。</p><details><summary>查看对应命令 / 文件内容</summary><pre>python3 skills/amazon-ads-planner/scripts/plan_amazon_ads.py \
+  --workspace launches/L1 --launch-id L1 \
+  --products launches/L1/ads/products.csv \
+  --keywords launches/L1/listing/amazon_keyword_master.csv \
+  --gate-decision launches/L1/launch_gate/launch_gate.decision.csv \
+  --seller-decision launches/L1/seller_central/seller_central.decision.csv \
+  --fba-plan launches/L1/fba/fba.shipment_plan.csv \
+  --output-prefix launches/L1/ads/ads
+# 人工审阅 G11 pass 行；record_gate 附 ads.economics.csv、campaigns、targets、关键词输入。
+# 审批后 current_gate=G12；实际投放仍由运营执行并保留记录。</pre></details><div class="expected"><span class="io-label">EXPECTED OUTPUT</span><pre>ads.economics.csv：售价 1000、利润 400、盈亏线 40%、目标 25%
+无竞品行时：Auto=840、Broad=660、Exact=930；总计 2430≤3000，未建产品定向的 570 不花出
+否词只指向实际生成的 discovery campaign；类型为 negative exact / negative phrase
+将目标改为 90%：报错；复用旧 launch 的 pass 或修改成本：拒绝生成。</pre></div></article><article class="usage-step"><h3>07 / G12：导入完整周报，计算真实指标</h3><p>示例窗口 2026-11-05 至 2026-11-11；实际使用时换成结束于今天之前的完整七天，导出时间不得在未来。报表默认新鲜度为 14 天。</p><span class="io-label">AGENT INPUT</span><pre>使用 $amazon-jp-live-data-sync 导入 SKU A 的 business、search terms、inventory、returns、reviews 五类报表并生成 manifest。再使用 $amazon-jp-performance-reviewer 复盘 L1。只从原始报表与已批准成本/广告目标计算，不采用我手填的利润和经营指标。</pre><p>演示输入：sessions=700，orders=70，sales=70000；广告 spend=700、orders=7、sales=7000；可售库存=400；当周退货=0；匹配 ASIN-A 的当周评论 rating=4.5。库存 ASIN=ASIN-A。metrics.csv 仅填写 launch_id,sku,week_start → L1,A,2026-11-05。</p><details><summary>查看对应命令 / 文件内容</summary><pre>python3 skills/amazon-jp-live-data-sync/scripts/normalize_live_reports.py \
+  --business launches/L1/raw_exports/business.csv \
+  --search-terms launches/L1/raw_exports/ads.csv \
+  --inventory launches/L1/raw_exports/inventory.csv \
+  --returns launches/L1/raw_exports/returns.csv \
+  --reviews launches/L1/raw_exports/reviews.csv \
+  --period-start 2026-11-05 --report-end 2026-11-11 \
+  --exported-at 2026-11-12T00:00:00 --sku-scope A \
+  --output-dir launches/L1/live_data/2026-11-05
+
+# 先创建 operations/2026-11-05，并写入本周 metrics.csv。
+python3 skills/amazon-jp-performance-reviewer/scripts/review_performance.py \
+  --workspace launches/L1 --launch-id L1 \
+  --metrics launches/L1/operations/2026-11-05/metrics.csv \
+  --report-manifest launches/L1/live_data/2026-11-05/report_manifest.csv \
+  --output-prefix launches/L1/operations/2026-11-05/performance</pre></details><div class="expected"><span class="io-label">EXPECTED OUTPUT</span><pre>verified_metrics：ACOS=10%，TACOS=1%，转化=10%，库存=40 天，评论均分=4.5
+performance.decisions.csv：decision=scale，gate_decision=pass，gate=G12
+review_id=L1:A:2026-11-05；有效高转化搜索词可得到 promote_exact
+广告 spend 改为 3500：ACOS=50%，decision=optimize，不再输出 promote_exact
+评论改为 1：pause；缺少可关联评论或报表窗口错误：needs_proof。</pre></div></article><article class="usage-step"><h3>08 / 审批本周复盘，进入下一周</h3><p>复盘完成与经营动作分开。pause 也可以完成一次复盘；needs_proof 必须先补证据。</p><span class="io-label">AGENT INPUT</span><pre>使用 $amazon-jp-sop-orchestrator，在 reviewer 审阅本周复盘后记录 G12，保留 business decision。归档原始导出、规范化文件和本周报告；下周继续 G12，不能覆盖本周快照。</pre><p>输入：performance.decisions.csv、verified_metrics.csv、report_manifest.csv。周报直接给 record_gate，不要把 scale / pause 手动改成 pass。</p><details><summary>查看对应命令 / 文件内容</summary><pre>python3 skills/amazon-jp-sop-orchestrator/scripts/record_gate.py \
+  --workspace launches/L1 --launch-id L1 --sku A --gate G12 \
+  --decision pass --owner operator --approver reviewer \
+  --decision-file launches/L1/operations/2026-11-05/performance.decisions.csv \
+  --evidence-file launches/L1/operations/2026-11-05/performance.verified_metrics.csv \
+  --evidence-file launches/L1/live_data/2026-11-05/report_manifest.csv</pre></details><div class="expected"><span class="io-label">EXPECTED OUTPUT</span><pre>审批后：current_gate=G12，lifecycle_state=optimizing
+reviews 中保存本周 review_id、week_start、经营动作与文件摘要
+相同请求立即重试：不重复写入；重叠或倒退的周被拒绝
+下一完整周使用新的日期目录继续复盘。经营动作的实际执行仍需人工记录。</pre></div></article></div></section>
         <section class="section" id="handoff">
           <div class="section-head">
             <h2>每个 SKU 的交付物包</h2>
@@ -863,7 +944,7 @@
     </div>
 
     <footer>
-      Standalone HTML usage guide · /Users/yunzhe/workspace/amazonjp/index.html
+      Amazon JP · 本地文件工作流 · 逻辑与用例更新：2026-11-12
     </footer>
   </div>
 </body>

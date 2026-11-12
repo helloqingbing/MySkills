@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 import argparse
-import csv
+import sys
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "amazon-jp-sop-orchestrator/scripts"))
+from approval_contract import ApprovalContext
+
+import csv
 
 
 REQUIRED_FIELDS = [
@@ -36,29 +40,30 @@ def read_csv(path):
 
 def has_gate_pass(path, sku):
     rows = read_csv(path)
-    return sum(row.get("sku") == sku and row.get("decision") == "pass" for row in rows) == 1
+    matching = [row for row in rows if row.get("sku") == sku]
+    return len(matching) == 1 and matching[0].get("decision") == "pass"
 
 
 def get(row, field):
     return str(row.get(field) or "").strip()
 
 
-def evidence_status(evidence_rows, area):
-    relevant = [
-        row for row in evidence_rows
-        if area in str(row.get("control_area", "")).lower()
-        or area in str(row.get("requirement", "")).lower()
-    ]
-    if not relevant:
-        return "needs_proof"
-    if any(str(row.get("status", "")).lower() == "blocked" for row in relevant):
+def evidence_status(evidence_rows, area, evidence_root="."):
+    from approval_contract import gate_validator
+    validator = gate_validator()
+    ref = {"import": "JP-IMPORT-FBA-01", "claim": "CLAIMS-JP-01"}.get(area)
+    relevant = [row for row in evidence_rows if row.get("control_ref") == ref]
+    if any(get(row, "status").lower() == "blocked" for row in relevant):
         return "blocked"
-    if any(str(row.get("status", "")).lower() != "pass" for row in relevant):
+    if len(relevant) != 1:
         return "needs_proof"
-    return "pass"
+    # Use the exact same validation as G6, considering only this control's issues.
+    result = validator.evaluate_sku(get(relevant[0], "sku"), relevant, [], 35, evidence_root)
+    failures = [reason for reason in result["reasons"].split("; ") if reason.startswith(ref + ":")]
+    return "needs_proof" if failures else "pass"
 
 
-def build_rows(listing_rows, evidence_rows):
+def build_rows(listing_rows, evidence_rows, evidence_root="."):
     source = listing_rows[0] if listing_rows else {}
     rows = []
     for area, field, label in REQUIRED_FIELDS:
@@ -66,7 +71,7 @@ def build_rows(listing_rows, evidence_rows):
         status = "pass" if value or (field == "variation_theme" and not get(source, "parent_asin")) else "needs_proof"
         if area == "compliance":
             control_area = "import" if field == "country_of_origin" else "claim"
-            status = evidence_status(evidence_rows, control_area)
+            status = evidence_status(evidence_rows, control_area, evidence_root)
             if not value and status == "pass":
                 status = "needs_proof"
         rows.append({
@@ -134,6 +139,8 @@ def main():
     parser.add_argument("--evidence")
     parser.add_argument("--gate-decision", required=True, help="Launch Gate decision CSV")
     parser.add_argument("--ops-proof", help="CSV with sku,field,evidence_file,owner,status=done")
+    parser.add_argument("--workspace", required=True)
+    parser.add_argument("--launch-id", required=True)
     parser.add_argument("--output-prefix", default="seller_central")
     args = parser.parse_args()
 
@@ -142,9 +149,17 @@ def main():
         parser.error("listing must contain exactly one row with SKU")
     if not has_gate_pass(args.gate_decision, get(listing_rows[0], "sku")):
         parser.error("Launch Gate must pass for this SKU")
+    try:
+        context = ApprovalContext(args.workspace, args.launch_id, get(listing_rows[0], "sku"), "G9")
+        context.decision("G6", args.gate_decision)
+        context.economics()
+        context.artifact("G8", args.listing)
+        context.artifact("G6", args.evidence or "")
+    except (ValueError, OSError, KeyError) as error:
+        parser.error(str(error))
     evidence_rows = read_csv(args.evidence)
     evidence_rows = [row for row in evidence_rows if get(row, "sku") == get(listing_rows[0], "sku")]
-    rows = build_rows(listing_rows, evidence_rows)
+    rows = build_rows(listing_rows, evidence_rows, Path(args.evidence).resolve().parent)
     proof_rows = read_csv(args.ops_proof)
     if args.ops_proof:
         proof_dir = Path(args.ops_proof).resolve().parent

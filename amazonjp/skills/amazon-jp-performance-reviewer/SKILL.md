@@ -1,6 +1,6 @@
 ---
 name: amazon-jp-performance-reviewer
-description: Run Amazon Japan post-launch operating reviews using live sales, traffic, ads, inventory, reviews, returns, and profit metrics. Use whenever Codex needs 7-day, 14-day, 30-day, or weekly Amazon JP launch reviews, action rules, ACOS/TACOS decisions, search-term feedback, listing change recommendations, inventory alerts, or continue/watch/optimize/kill decisions.
+description: Run Amazon Japan post-launch operating reviews using live sales, traffic, ads, inventory, reviews, returns, and profit metrics. Use whenever Codex needs 7-day, 14-day, 30-day, or weekly Amazon JP launch reviews, action rules, ACOS/TACOS decisions, search-term feedback, listing change recommendations, inventory alerts, or scale/watch/optimize/pause decisions.
 ---
 
 # Amazon JP Performance Reviewer
@@ -33,7 +33,7 @@ Collect:
    - inventory
    - review/return quality
 2. Apply operating rules:
-   - ACOS above break-even for 3+ days: reduce bids or add negatives
+   - Weekly ACOS above approved target or break-even: reduce bids or add negatives
    - spend with no orders after threshold: negate or reduce bid
    - high CTR and low CVR: review price, image, reviews, or offer
    - low CTR and high impressions: update main image/title angle
@@ -46,7 +46,6 @@ Collect:
    - `watch`
    - `needs_proof`
    - `pause`
-   - `kill`
 4. Feed actions back to Listing/A+, Ads, FBA, Sourcing/QC, and Review Miner.
 
 ## Local Script
@@ -54,11 +53,8 @@ Collect:
 For CSV-based weekly review, run:
 
 ```bash
-python3 scripts/review_performance.py \
+python3 scripts/review_performance.py --workspace /path/to/launch --launch-id L1 \
   --metrics launch_metrics_weekly.csv \
-  --search-terms ads_search_term_feedback.csv \
-  --inventory inventory.normalized.csv \
-  --returns returns.normalized.csv \
   --report-manifest report_manifest.csv \
   --output-prefix performance
 ```
@@ -69,6 +65,24 @@ The script writes:
 - `performance.decisions.csv` (one decision per SKU)
 - `performance.alerts.csv`
 - `performance.weekly_review.md`
+- `performance.verified_metrics.csv` (values recomputed from verified report files)
+
+`--metrics` supplies one row per SKU with `launch_id`, `sku`, `week_start`.
+Economics are recomputed from approved G6 costs and the approved G11
+`<prefix>.economics.csv` target. Manual margin/target and operating values are ignored: sessions, orders, sales, ad spend, ACOS/TACOS, conversion, returns, review
+rating and inventory coverage are recomputed from the manifest's normalized files.
+Business metrics require one aggregate row per SKU. Days of supply uses sellable
+inventory divided by average daily units ordered during the seven-day review.
+Rating is the mean of ratings in the review report for the matching SKU or ASIN;
+ASIN-only reviews require an ASIN association in business or inventory data.
+Zero reviews leave rating unverified and prevent scale.
+
+Business, ad search-term, returns and reviews reports must cover exactly
+`week_start` through `week_start + 6 days`; inventory must be a snapshot ending on
+that last day, before today. Review and return event dates must fall within the
+declared period. Future export dates and incomplete or mismatched periods prevent
+scale. The optional `--search-terms`, `--inventory` and `--returns` arguments, when
+used, must identify the exact normalized files in the manifest.
 
 ## Output
 
@@ -80,3 +94,24 @@ Return:
 - search-term promote/negate actions
 - listing, A+, inventory, QC, or ad feedback loops
 - next 7-day review plan
+
+## Bound approval contract
+
+Install these skills together, preserving the sibling directory layout; scripts share
+`amazon-jp-sop-orchestrator/scripts/approval_contract.py` and the Launch Gate validator.
+The launch must currently be at `G12`. `--workspace` and `--launch-id` are required.
+Downstream scripts verify the matching human-approved gate events and SHA-256 of the
+approved files (including referenced local proof snapshots). A same-SKU pass CSV from
+another launch or a changed evidence file cannot release this launch. Keep approved
+snapshots immutable. Older workspaces without bound approvals require a new audited
+launch; copying a historical pass CSV does not migrate approval.
+The local workspace is the trust boundary; this is not a signed approval/auth service.
+
+`decisions.csv` separates the business `decision` (scale/optimize/watch/pause/needs_proof)
+from `gate_decision` (pass/needs_proof), and includes `gate=G12`, `week_start` and
+`review_id=launch_id:sku:week_start`. A complete pause review can pass G12 without
+permitting growth. `promote_exact` uses the approved target and is emitted only for a
+SKU whose overall decision is scale. Record the decisions CSV directly for G12.
+A passed review retains `current_gate=G12`, `lifecycle_state=optimizing`; subsequent
+approved weeks must be later and non-overlapping. Identical immediate retries are
+idempotent. Archive each week's files in its own directory before starting the next.

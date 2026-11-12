@@ -51,3 +51,17 @@ cp -R ./skills/amazon-* ~/.codex/skills/
 在工程根目录运行 `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v`。
 测试包括空证据、跨 SKU 隔离、过期报表、缺指标放量、FBA proof、Seller Central proof
 以及一条使用合成数据从原始运营报表走到复盘决策的回归链路。真实 SKU 验收仍需实际导出与后台证明。
+
+新增回归覆盖报表与复盘输入绑定、完整七天周期、未来导出时间、冲突决策、G12
+日志失败后的幂等恢复、广告空结果清理、样品硬条件和负数清洗。
+复盘的经营指标直接从 manifest 所指报表计算，`--metrics` 只需提供 launch_id、sku、
+week_start 和已批准成本模型中的 break_even_acos_pct。
+
+### Approval contract update
+
+Seller/FBA/Ads/Performance CLIs require `--workspace` and `--launch-id`. Install the
+bundle together. Approval checks bind the current stage, gate event and hashed files;
+previous loose pass CSVs do not migrate automatically. Ads economics are recomputed
+from approved G6 costs; G11 records `<prefix>.economics.csv`; G12 reuses its target.
+Weekly review outputs distinguish business actions from gate completion and keep the
+launch in G12/optimizing. See `../index.html` for agent prompts, inputs and outputs.

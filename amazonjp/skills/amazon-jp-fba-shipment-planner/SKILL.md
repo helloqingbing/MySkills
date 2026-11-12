@@ -49,7 +49,7 @@ Collect:
 For CSV-based planning, run:
 
 ```bash
-python3 scripts/plan_fba_shipment.py \
+python3 scripts/plan_fba_shipment.py --workspace /path/to/launch --launch-id L1 \
   --inventory inventory.csv \
   --package-specs package_specs.csv \
   --daily-sales daily_sales.csv \
@@ -81,3 +81,15 @@ Return:
 - label/box/content checklist
 - stockout and overstock risks
 - owner actions before inventory leaves the supplier
+
+## Bound approval contract
+
+Install these skills together, preserving the sibling directory layout; scripts share
+`amazon-jp-sop-orchestrator/scripts/approval_contract.py` and the Launch Gate validator.
+The launch must currently be at `G10`. `--workspace` and `--launch-id` are required.
+Downstream scripts verify the matching human-approved gate events and SHA-256 of the
+approved files (including referenced local proof snapshots). A same-SKU pass CSV from
+another launch or a changed evidence file cannot release this launch. Keep approved
+snapshots immutable. Older workspaces without bound approvals require a new audited
+launch; copying a historical pass CSV does not migrate approval.
+The local workspace is the trust boundary; this is not a signed approval/auth service.

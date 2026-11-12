@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 import argparse
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "amazon-jp-sop-orchestrator/scripts"))
+from approval_contract import ApprovalContext, target_acos
+
 import csv
 import hashlib
 import math
 from collections import defaultdict
 from datetime import date, timedelta
-from pathlib import Path
 
 
 def read_csv(path):
@@ -79,6 +83,9 @@ def review_metric_row(row, max_age_days=14, today=None):
 
     if acos is not None and break_even is not None and acos > break_even:
         actions.append(("ads", "reduce_bid_or_add_negatives", f"ACOS {acos:.1f}% above break-even {break_even:.1f}%"))
+    approved_target = parse_number(row.get("target_acos_pct"))
+    if acos is not None and approved_target is not None and acos > approved_target and not any(a[0] == "ads" for a in actions):
+        actions.append(("ads", "reduce_bid_or_add_negatives", f"ACOS {acos:.1f}% above target {approved_target:.1f}%"))
     if tacos is not None and tacos > 35:
         actions.append(("profit", "check_price_margin_and_budget", f"TACOS {tacos:.1f}% is high"))
     if cvr is not None and cvr < 5:
@@ -121,7 +128,7 @@ def owner_for(area):
     }.get(area, "operator")
 
 
-def search_term_actions(rows):
+def search_term_actions(rows, target_acos_pct=None):
     actions = []
     for row in rows:
         spend = parse_number(get(row, "spend_jpy", "Spend"))
@@ -135,7 +142,7 @@ def search_term_actions(rows):
         if spend is not None and orders == 0 and spend >= 1500:
             action = "negate_or_reduce_bid"
             reason = "spent at least 1500 JPY with no orders"
-        elif orders is not None and orders >= 2 and acos is not None and acos <= 30 and sales is not None and sales > 0:
+        elif orders is not None and orders >= 2 and acos is not None and target_acos_pct is not None and acos <= target_acos_pct and sales is not None and sales > 0:
             action = "promote_exact"
             reason = "orders with efficient ACOS"
         elif clicks is not None and clicks >= 20 and orders == 0:
@@ -217,7 +224,7 @@ def final_decision(actions):
     return "watch"
 
 
-def manifest_issues(rows, max_age_days, today=None, sku=""):
+def manifest_issues(rows, max_age_days, today=None, sku="", week_start=""):
     required = {"business_metrics", "ads_search_terms", "inventory", "returns", "reviews"}
     by_name = {row.get("report_name", ""): row for row in rows}
     issues = [f"missing report {name}" for name in sorted(required - set(by_name))]
@@ -233,8 +240,15 @@ def manifest_issues(rows, max_age_days, today=None, sku=""):
             period_start = date.fromisoformat(row.get("period_start", ""))
             exported_at = date.fromisoformat(row.get("exported_at", "")[:10])
             age = ((today or date.today()) - period_end).days
-            if period_start > period_end or exported_at < period_end:
+            if period_start > period_end or exported_at < period_end or exported_at > (today or date.today()):
                 age = max_age_days + 1
+            if week_start:
+                start = date.fromisoformat(week_start)
+                end = start + timedelta(days=6)
+                if end >= (today or date.today()):
+                    issues.append("review window must end before today")
+                if period_end != end or (name != "inventory" and period_start != start):
+                    issues.append(f"report {name} does not match the review window")
         except ValueError:
             age = max_age_days + 1
         if age < 0 or age > max_age_days or row.get("freshness") != "fresh" or row.get("blocking_gap"):
@@ -261,6 +275,54 @@ def manifest_issues(rows, max_age_days, today=None, sku=""):
         if not valid_files:
             issues.append(f"unverified report {name}")
     return issues
+
+
+def derive_metrics(metric, reports):
+    """Use verified report values; economics are bound by the caller to the G6 approval."""
+    sku = get(metric, "sku", "SKU")
+    selected = {name: [row for row in rows if get(row, "sku", "SKU") == sku]
+                for name, rows in reports.items()}
+    if len(selected["business_metrics"]) != 1 or len(selected["inventory"]) != 1:
+        raise ValueError("business and inventory require one aggregate row per SKU")
+    business = selected["business_metrics"][0]
+    inventory = selected["inventory"][0]
+
+    def number(row, field):
+        value = parse_number(row.get(field))
+        if value is None or value < 0:
+            raise ValueError(f"missing or invalid report field {field} for SKU {sku}")
+        return value
+
+    sessions, orders, sales = (number(business, field) for field in ("sessions", "orders", "sales_jpy"))
+    ads = selected["ads_search_terms"]
+    spend = sum(number(row, "spend_jpy") for row in ads)
+    ad_sales = sum(number(row, "sales_jpy") for row in ads)
+    returns = sum(number(row, "return_qty") for row in selected["returns"])
+    fulfillable = number(inventory, "fulfillable_qty")
+    daily_sales = orders / 7
+    supply = fulfillable / daily_sales if daily_sales else None
+    asins = {get(business, field) for field in ("parent_asin", "child_asin")} | {get(inventory, "asin")}
+    asins.discard("")
+    review_rows = [row for row in reports["reviews"] if get(row, "sku") == sku or
+                   (not get(row, "sku") and get(row, "asin") in asins)]
+    start = date.fromisoformat(get(metric, "week_start"))
+    end = start + timedelta(days=6)
+    for rows, field in ((selected["returns"], "return_date"), (review_rows, "review_date")):
+        for row in rows:
+            if not start <= date.fromisoformat(get(row, field)) <= end:
+                raise ValueError(f"{field} is outside the review window for SKU {sku}")
+    ratings = [number(row, "rating") for row in review_rows]
+    if any(value > 5 or value < 1 for value in ratings):
+        raise ValueError("review rating must be between 1 and 5")
+    result = {key: get(metric, key) for key in ("launch_id", "sku", "week_start", "break_even_acos_pct", "target_acos_pct")}
+    result.update(sessions=sessions, orders=orders, sales_jpy=sales, ad_spend_jpy=spend,
+                  acos_pct=spend / ad_sales * 100 if ad_sales else None,
+                  tacos_pct=spend / sales * 100 if sales else None,
+                  unit_session_pct=orders / sessions * 100 if sessions else None,
+                  returns=returns, rating=sum(ratings) / len(ratings) if ratings else None,
+                  days_of_supply=supply)
+    # CSV-style strings preserve zero through the existing optional-value parser.
+    return {key: "" if value is None else str(value) for key, value in result.items()}
 
 
 def write_csv(path, rows, fields):
@@ -292,44 +354,91 @@ def main():
     parser.add_argument("--inventory")
     parser.add_argument("--returns")
     parser.add_argument("--report-manifest")
+    parser.add_argument("--workspace", required=True)
+    parser.add_argument("--launch-id", required=True)
     parser.add_argument("--output-prefix", default="performance")
     parser.add_argument("--max-age-days", type=int, default=14)
     args = parser.parse_args()
 
-    actions = []
+    if args.max_age_days < 0:
+        parser.error("max-age-days must be nonnegative")
+    actions, term_actions, verified_metrics = [], [], []
     metric_rows = read_csv(args.metrics)
     for row in metric_rows:
-        actions.extend(review_metric_row(row, args.max_age_days))
+        for canonical, alias in (("sku", "SKU"), ("launch_id", "Launch ID"), ("week_start", "Week Start")):
+            row[canonical] = get(row, canonical, alias)
+    if len({get(row, "sku", "SKU") for row in metric_rows}) != len(metric_rows):
+        parser.error("review input requires one row per SKU")
     manifest_rows = read_csv(args.report_manifest)
+    by_name = {row.get("report_name"): row for row in manifest_rows}
+    for name, supplied in (("inventory", args.inventory), ("returns", args.returns),
+                           ("ads_search_terms", args.search_terms)):
+        if supplied and Path(supplied).resolve() != Path(by_name.get(name, {}).get("normalized_file") or "").resolve():
+            parser.error(f"{name} input must be the file registered in the manifest")
     for metric in metric_rows or [{}]:
-        issues = manifest_issues(manifest_rows, args.max_age_days, sku=get(metric, "sku", "SKU"))
+        sku, launch_id = get(metric, "sku", "SKU"), get(metric, "launch_id", "Launch ID")
+        issues = manifest_issues(manifest_rows, args.max_age_days, sku=sku,
+                                 week_start=get(metric, "week_start", "Week Start"))
+        if not sku or not launch_id or not get(metric, "week_start", "Week Start"):
+            issues.append("launch_id, sku and week_start are required")
+        if not issues:
+            try:
+                reports = {name: read_csv(row["normalized_file"]) for name, row in by_name.items()}
+                if launch_id != args.launch_id:
+                    raise ValueError("metrics launch_id differs from --launch-id")
+                context = ApprovalContext(args.workspace, args.launch_id, sku, "G12")
+                economics = context.economics()
+                # Ignore caller-supplied economics. Reuse the approved G11 target.
+                approved = context.named_artifact("G11", ".economics.csv")
+                policy = [row for row in read_csv(approved) if row.get("sku") == sku and row.get("launch_id") == launch_id]
+                if len(policy) != 1:
+                    raise ValueError("G11 must contain one approved ads.economics.csv row for this launch/SKU")
+                bound = {**metric, "break_even_acos_pct": str(economics["break_even_acos_pct"]),
+                         "target_acos_pct": str(target_acos(economics["break_even_acos_pct"], policy[0].get("target_acos_pct")))}
+                verified = derive_metrics(bound, reports)
+                verified_metrics.append(verified)
+                actions.extend(review_metric_row(verified, args.max_age_days))
+                terms = [dict(row) for row in reports["ads_search_terms"] if get(row, "sku") == sku]
+                for row in terms:
+                    row["launch_id"] = launch_id
+                    spend, sales = parse_number(row.get("spend_jpy")), parse_number(row.get("sales_jpy"))
+                    row["acos_pct"] = str(spend / sales * 100) if spend is not None and sales else ""
+                sku_terms = search_term_actions(terms, float(verified["target_acos_pct"]))
+                term_actions.extend(sku_terms)
+                for term in sku_terms:
+                    if term["action"] == "negate_or_reduce_bid":
+                        actions.append({"launch_id": launch_id, "sku": sku, "area": "ads",
+                                        "action": "reduce_bid_or_add_negatives",
+                                        "reason": f"search term {term['search_term']}: {term['reason']}",
+                                        "owner": "ads", "status": "todo"})
+            except (ValueError, OSError, KeyError, csv.Error) as error:
+                issues.append(str(error))
         if issues:
-            actions.append({"launch_id": get(metric, "launch_id", "Launch ID"),
-                            "sku": get(metric, "sku", "SKU"), "area": "data", "action": "needs_proof",
+            actions.append({"launch_id": launch_id, "sku": sku, "area": "data", "action": "needs_proof",
                             "reason": "; ".join(issues), "owner": "operator", "status": "todo"})
-    if not metric_rows:
-        actions.append({"launch_id": "", "sku": "", "area": "data", "action": "needs_proof",
-                        "reason": "metrics report has no rows", "owner": "operator", "status": "todo"})
-    actions.extend(inventory_actions(read_csv(args.inventory)))
-    actions.extend(return_actions(read_csv(args.returns)))
-    term_actions = search_term_actions(read_csv(args.search_terms))
-    launch_by_sku = {get(row, "sku", "SKU"): get(row, "launch_id", "Launch ID") for row in metric_rows}
-    for action in actions:
-        if action["sku"] and not action["launch_id"]:
-            action["launch_id"] = launch_by_sku.get(action["sku"], "")
-    for term in term_actions:
-        if term["action"] == "negate_or_reduce_bid":
-            actions.append({"launch_id": term["launch_id"] or launch_by_sku.get(term["sku"], ""),
-                            "sku": term["sku"], "area": "ads", "action": "reduce_bid_or_add_negatives",
-                            "reason": f"search term {term['search_term']}: {term['reason']}",
-                            "owner": "ads", "status": "todo"})
+    constrained = {(row["launch_id"], row["sku"]) for row in actions if row["area"] != "growth"}
+    actions = [row for row in actions if row["area"] != "growth" or (row["launch_id"], row["sku"]) not in constrained]
+    write_csv(f"{args.output_prefix}.verified_metrics.csv", verified_metrics,
+              ["launch_id", "sku", "week_start", "break_even_acos_pct", "target_acos_pct", "sessions", "orders", "sales_jpy",
+               "ad_spend_jpy", "acos_pct", "tacos_pct", "unit_session_pct", "returns", "rating", "days_of_supply"])
     decision = final_decision(actions)
     grouped = defaultdict(list)
     for action in actions:
         grouped[(action["launch_id"], action["sku"])].append(action)
-    per_sku = [{"launch_id": launch_id, "sku": sku, "decision": final_decision(rows)}
-               for (launch_id, sku), rows in sorted(grouped.items())]
-    write_csv(f"{args.output_prefix}.decisions.csv", per_sku, ["launch_id", "sku", "decision"])
+    windows = {(row["launch_id"], row["sku"]): row.get("week_start", "") for row in metric_rows}
+    per_sku = []
+    for (launch_id, sku), rows in sorted(grouped.items()):
+        action = final_decision(rows)
+        week = windows.get((launch_id, sku), "")
+        complete = not any(row["action"] == "needs_proof" for row in rows)
+        per_sku.append({"launch_id": launch_id, "sku": sku, "gate": "G12", "week_start": week,
+                        "review_id": f"{launch_id}:{sku}:{week}", "decision": action,
+                        "gate_decision": "pass" if complete else "needs_proof"})
+    decisions = {(row["launch_id"], row["sku"]): row["decision"] for row in per_sku}
+    term_actions = [row for row in term_actions if row["action"] != "promote_exact" or
+                    decisions.get((row["launch_id"], row["sku"])) == "scale"]
+    write_csv(f"{args.output_prefix}.decisions.csv", per_sku,
+              ["launch_id", "sku", "gate", "week_start", "review_id", "decision", "gate_decision"])
     write_csv(f"{args.output_prefix}.actions.csv", actions, [
         "launch_id", "sku", "area", "action", "reason", "owner", "status",
     ])

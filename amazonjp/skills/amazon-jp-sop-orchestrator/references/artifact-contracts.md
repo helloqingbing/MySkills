@@ -208,7 +208,7 @@ Every structured artifact should include as many of these as possible:
 ## Decision recording
 
 `scripts/create_launch_workspace.py --output-dir WORKSPACE` creates `workflow_state.json`,
-`gate_decisions.csv`, and `artifact_manifest.csv`. For each G0–G12 gate, prepare a decision CSV
+`gate_decisions.csv`, and `artifact_manifest.csv`. For G0–G11, prepare a decision CSV
 with exactly one `sku,gate,decision` row for that SKU and record a passing decision with:
 
 ```bash
@@ -218,11 +218,14 @@ python3 scripts/record_gate.py --workspace WORKSPACE --launch-id LAUNCH-1 \
   --evidence-file WORKSPACE/live_data/report_manifest.csv
 ```
 
-Passing requires the correct next gate, an approver, a matching `pass` decision row, and existing
+For G0–G11, passing requires the correct next gate, an approver, a matching `pass` decision row, and existing
 evidence files. Non-pass decisions require `--reason` and keep the current gate active.
 For G6, pass both `evidence_matrix.csv` and `landed_cost_model.csv` as evidence files. The
 recorder recalculates the launch-gate decision from those inputs. `workflow_state.json` is the
 authoritative commit; the two CSV logs are regenerated from it under a workspace lock.
+CSV recovery runs before gate validation, including after the final gate completes.
+Retrying an identical request returns the committed result without appending another
+decision; changing the request or its evidence cannot rewrite an already passed gate.
 
 ## Candidate Status Values
 
@@ -236,3 +239,37 @@ authoritative commit; the two CSV logs are regenerated from it under a workspace
 - `optimizing`: live and under weekly iteration.
 - `pause`: stop scaling until a quality, inventory, or economics issue is resolved.
 - `kill`: stop spend or discontinue.
+
+## Bound approvals and recurring reviews
+
+`workflow_state.json` is authoritative. New pass records save an approval snapshot
+under `launches[launch_id].approvals[gate]`, tied to the event `run_id`, decision file,
+and hashed artifacts, including local files referenced by evidence/proof CSVs.
+Seller Central, FBA, Ads and Performance require `--workspace` and `--launch-id`,
+and enforce stages G9/G10/G11/G12 respectively. Each launch is one SKU. Preserve
+approved files; changes require a new audited launch, not overwriting a passed gate.
+Old state without approval snapshots cannot release downstream work.
+
+G6 must include files named `evidence_matrix.csv` and `landed_cost_model.csv`; the
+recorder recalculates G6 at the default 35% margin threshold. Cost and evidence
+contents are revalidated downstream. G9 requires the approved G6 decision; G10 also
+requires the G9 decision; G11 also requires the registered G10 shipment plan.
+G8 must attach the exact listing CSV and keyword master that G9/G11 will consume.
+All preceding gate approval snapshots are verified downstream.
+For G9 record listing/ops proof and checklist; for G10 record package specs, sales,
+inventory, shipment proof and shipment plan. `status=pass` in a shipment plan is not
+itself a gate decision: prepare a human-reviewed G10 pass row and attach the plan.
+
+G11 must include the generated `<prefix>.economics.csv` as evidence, together with
+campaigns/targets and their keyword inputs. Economics come from G6; the chosen target
+ACOS is positive and at most break-even. Prepare a reviewed G11 gate decision CSV.
+Header-only negatives are valid output and need not be attached as required evidence.
+
+G12 consumes `performance.decisions.csv` directly: it contains `gate=G12`, launch/SKU,
+`week_start`, `review_id=launch_id:sku:week_start`, business `decision` and separate
+`gate_decision`. Only complete reviews with gate_decision=pass can pass; business
+pause/optimize/watch/scale is retained. Attach verified metrics and the report manifest;
+referenced raw and normalized reports are hashed too (empty returns/reviews allowed).
+G12 pass retains current_gate=G12 and lifecycle_state=optimizing. Approved weeks cannot
+overlap or move backward. Save each week's output separately. This loop records
+review recommendations; execution and its evidence remain operator responsibilities.

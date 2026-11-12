@@ -58,5 +58,12 @@
 <p>Launch Gate 的 pass 证据必须是本地非空快照；Seller Central 与 FBA proof 拒绝空文件、非支持格式和同一文件复用多个字段。回归测试 24/24 通过。</p>
 <p class="amber">仍需人工验收：</p><p>外部 URL 或截图的真实内容、导出范围是否与 Seller Central 一致，以及真实 SKU 的完整运行，无法仅靠本地 CSV 校验确认。G0–G5、G7–G12 的人工 Gate 决策仍依赖审批人审查，不能视为自动验证。</p>
 </section>
+<section class="card" style="margin-top:18px">
+<h2 class="cyan">第二轮逻辑修复 · 2026-11-12</h2>
+<p>复盘直接读取 manifest 校验通过的报表，重新计算经营指标；额外输入不能替换已登记文件。经营报表必须匹配完整复盘周，未来导出时间被拒绝，并输出 verified_metrics.csv 供追溯。</p>
+<p>Seller Central、FBA、Ads 与 Gate 记录器拒绝同一 SKU/阶段的冲突决策。G12 完成后也先恢复 CSV 投影，相同请求重试不重复记账。</p>
+<p>广告空结果写表头并清除上次指令；供应商缺样品、MOQ、交期等必要信息不能 pass；数量和尺寸中的负数与非法数字直接报错。新增 13 项回归，当前 37/37 通过。</p>
+<p>复盘输入只需身份、周期和已批准成本模型中的 break_even_acos_pct。评论均分使用报表内匹配 SKU/ASIN 的评分；零评论无法验证评分，因此不会放量。</p>
+</section>
 <p class="foot">Current code review · 2026-11-12 · architecture-review-current.html</p>
 </main></body></html>

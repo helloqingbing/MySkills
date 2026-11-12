@@ -98,16 +98,11 @@ TEMPLATES = {
         "impressions", "clicks", "spend_jpy", "orders", "sales_jpy",
         "acos_pct", "ctr_pct", "cvr_pct", "action", "reason",
     ],
-    "operations/launch_metrics_weekly.csv": [
-        "launch_id", "sku", "week_start", "sessions", "unit_session_pct",
-        "orders", "sales_jpy", "ad_spend_jpy", "acos_pct", "tacos_pct",
-        "break_even_acos_pct", "days_of_supply", "organic_rank_notes",
-        "reviews", "rating", "returns", "next_action",
-    ],
+    "operations/launch_metrics_weekly.csv": ["launch_id", "sku", "week_start"],
     "operations/performance.actions.csv": [
         "launch_id", "sku", "area", "action", "reason", "owner", "status",
     ],
-    "operations/performance.decisions.csv": ["launch_id", "sku", "decision"],
+    "operations/performance.decisions.csv": ["launch_id", "sku", "gate", "week_start", "review_id", "decision", "gate_decision"],
     "operations/performance.alerts.csv": [
         "launch_id", "sku", "search_term", "action", "reason", "sales_jpy",
     ],

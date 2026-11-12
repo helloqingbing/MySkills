@@ -8,7 +8,7 @@ import importlib.util
 import json
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 GATES = [f"G{i}" for i in range(13)]
@@ -18,7 +18,7 @@ LIFECYCLE = ("raw_data", "live_data_synced", "normalized", "scored", "risk_scree
              "fba_ready", "ads_ready", "performance_reviewed")
 
 
-def artifact_row(path, workspace, launch_id, sku, gate, owner):
+def artifact_row(path, workspace, launch_id, sku, gate, owner, allow_empty=False):
     resolved = Path(path).resolve()
     if not resolved.is_file():
         raise ValueError(f"evidence file does not exist: {path}")
@@ -28,7 +28,7 @@ def artifact_row(path, workspace, launch_id, sku, gate, owner):
     if resolved.suffix.lower() == ".csv":
         with resolved.open(newline="", encoding="utf-8-sig") as f:
             row_count = sum(1 for _ in csv.DictReader(f))
-        if row_count == 0:
+        if row_count == 0 and not allow_empty:
             raise ValueError(f"evidence CSV has no rows: {path}")
     return {"launch_id": launch_id, "sku": sku, "gate": gate,
             "artifact_path": os.path.relpath(resolved, workspace), "artifact_type": resolved.suffix.lower().lstrip("."),
@@ -90,6 +90,10 @@ def _record_locked(workspace, launch_id, sku, gate, decision, owner, approver=""
     state_path = workspace / "workflow_state.json"
     with state_path.open(encoding="utf-8") as f:
         state = json.load(f)
+    # Recover projections before checking whether the requested gate has already committed.
+    for name in ("gate_decisions", "artifact_manifest"):
+        if name in state:
+            replace_csv(workspace / f"{name}.csv", state[name])
     if gate not in GATES or decision not in {"pass", "needs_proof", "blocked"}:
         raise ValueError("invalid gate or decision")
     if not launch_id or not sku or not owner:
@@ -98,8 +102,33 @@ def _record_locked(workspace, launch_id, sku, gate, decision, owner, approver=""
         raise ValueError("pass requires approver, a decision CSV and separate evidence files")
     if decision != "pass" and not reason:
         raise ValueError("non-pass decision requires a reason")
+    # Bind referenced local snapshots too, so changing a PDF or normalized report
+    # invalidates the approval even if the enclosing CSV is unchanged.
+    referenced = []
+    for file in evidence_files:
+        path = Path(file).resolve()
+        if path.suffix.lower() != ".csv":
+            continue
+        for item in read_csv(path):
+            for field in ("evidence", "evidence_file", "fnsku_label_file", "carton_label_file",
+                          "box_content_file", "shipment_plan_file", "source_file", "normalized_file"):
+                if field == "evidence" and path.name != "evidence_matrix.csv":
+                    continue
+                value = item.get(field, "")
+                if value:
+                    target = Path(value)
+                    target = target if target.is_absolute() else path.parent / target
+                    referenced.append(str(target.resolve()))
+    referenced = sorted(set(referenced) - {str(Path(p).resolve()) for p in evidence_files})
+    request = [launch_id, sku, gate, decision, owner, approver, reason, next_action, due_date]
+    for path in [*evidence_files, *referenced, *([decision_file] if decision_file else [])]:
+        resolved = Path(path).resolve()
+        request.append([str(resolved), hashlib.sha256(resolved.read_bytes()).hexdigest()])
+    request_hash = hashlib.sha256(json.dumps(request, ensure_ascii=False).encode()).hexdigest()
     current = state["launches"].get(launch_id)
-    if current and current["lifecycle_state"] == "complete":
+    if current and current.get("last_request_hash") == request_hash:
+        return current
+    if current and current["lifecycle_state"] == "complete" and gate != "G12":
         raise ValueError("launch is already complete")
     if current and current["sku"] != sku:
         raise ValueError("launch_id already belongs to another SKU")
@@ -108,27 +137,68 @@ def _record_locked(workspace, launch_id, sku, gate, decision, owner, approver=""
         raise ValueError(f"expected {expected}, got {gate}; skipping or rewriting a passed gate is forbidden")
     if decision_file and any(Path(path).resolve() == Path(decision_file).resolve() for path in evidence_files):
         raise ValueError("decision CSV cannot be its own evidence file")
+    review = None
     if decision == "pass":
         with open(decision_file, newline="", encoding="utf-8-sig") as f:
-            matching = [row for row in csv.DictReader(f) if row.get("sku") == sku and
-                        row.get("decision") == "pass" and row.get("gate", gate) == gate]
+            matching = [row for row in csv.DictReader(f) if row.get("sku") == sku and row.get("gate", gate) == gate]
         if len(matching) != 1:
+            raise ValueError("decision CSV must contain exactly one row for this SKU and gate")
+        selected = matching[0]
+        if selected.get("launch_id") and selected["launch_id"] != launch_id:
+            raise ValueError("decision CSV belongs to another launch")
+        if gate == "G12":
+            if (selected.get("launch_id") != launch_id or selected.get("gate_decision") != "pass"
+                    or selected.get("decision") not in {"scale", "optimize", "watch", "pause"}):
+                raise ValueError("G12 requires a completed review with a separate gate_decision=pass")
+            start = date.fromisoformat(selected.get("week_start", ""))
+            review_id = f"{launch_id}:{sku}:{start.isoformat()}"
+            if selected.get("review_id") != review_id or start + timedelta(days=6) >= date.today():
+                raise ValueError("G12 requires a matching review_id and completed week")
+            previous = (current or {}).get("reviews", [])
+            if any(start < date.fromisoformat(row["week_start"]) + timedelta(days=7) for row in previous):
+                raise ValueError("review week overlaps or precedes an already approved review")
+            review = {"review_id": review_id, "week_start": start.isoformat(), "action": selected["decision"]}
+        elif selected.get("decision") != "pass":
             raise ValueError("decision CSV must contain exactly one pass row for this SKU and gate")
+        if gate in {"G9", "G10", "G11", "G12"}:
+            import sys
+            sys.path.insert(0, str(Path(__file__).resolve().parent))
+            from approval_contract import ApprovalContext, target_acos
+            economics = ApprovalContext(workspace, launch_id, sku, gate).economics()
+            if gate == "G11":
+                policies = [path for path in evidence_files if Path(path).name.endswith(".economics.csv")]
+                if len(policies) != 1:
+                    raise ValueError("G11 requires exactly one generated .economics.csv evidence file")
+                policy = [row for row in read_csv(policies[0]) if row.get("sku") == sku and row.get("launch_id") == launch_id]
+                if len(policy) != 1 or not policy[0].get("target_acos_pct"):
+                    raise ValueError("G11 economics requires one explicit target for this launch/SKU")
+                target_acos(economics["break_even_acos_pct"], policy[0]["target_acos_pct"])
         if gate == "G6":
             verify_launch_gate(sku, decision_file, evidence_files)
     proof_paths = list(evidence_files) + ([decision_file] if decision_file else [])
     artifacts = [artifact_row(path, workspace, launch_id, sku, gate, owner) for path in proof_paths]
+    artifacts.extend(artifact_row(path, workspace, launch_id, sku, gate, owner, allow_empty=True)
+                     for path in referenced)
     now = datetime.now(timezone.utc).isoformat()
     row = {"run_id": str(uuid.uuid4()), "launch_id": launch_id, "sku": sku, "gate": gate,
            "decision": decision, "reason": reason, "owner": owner, "approver": approver,
            "decision_at": now, "next_action": next_action, "due_date": due_date}
     next_gate = GATES[GATES.index(gate) + 1] if decision == "pass" and gate != "G12" else gate
+    approvals = dict((current or {}).get("approvals", {}))
+    if decision == "pass" and gate != "G12":
+        approvals[gate] = {"run_id": row["run_id"],
+                           "decision_file": os.path.relpath(Path(decision_file).resolve(), workspace),
+                           "artifacts": artifacts}
+    reviews = list((current or {}).get("reviews", []))
+    if review:
+        reviews.append({**review, "run_id": row["run_id"], "artifacts": artifacts})
     state["launches"][launch_id] = {
-        "sku": sku, "lifecycle_state": "complete" if decision == "pass" and gate == "G12" else
+        "sku": sku, "lifecycle_state": "optimizing" if decision == "pass" and gate == "G12" else
         LIFECYCLE[GATES.index(gate) + 1] if decision == "pass" else LIFECYCLE[GATES.index(gate)],
         "current_gate": next_gate, "last_gate": gate, "last_decision": decision,
         "blocking_issues": [] if decision == "pass" else [reason],
         "next_action": next_action, "updated_at": now,
+        "last_request_hash": request_hash, "approvals": approvals, "reviews": reviews,
     }
     if "gate_decisions" not in state:
         state["gate_decisions"] = read_csv(workspace / "gate_decisions.csv")

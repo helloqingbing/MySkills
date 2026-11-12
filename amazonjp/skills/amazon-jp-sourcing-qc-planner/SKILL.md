@@ -59,6 +59,12 @@ The script writes:
 - `sourcing_qc.qc_checklist.csv`
 - `sourcing_qc.sample_review.md`
 
+Supplier `pass` requires SKU, supplier name, positive unit cost and MOQ, a valid
+nonnegative lead time, certification details and an approved sample status.
+Missing fields produce `needs_proof`; an explicitly failed/rejected sample or
+invalid negative economics produces `blocked`. Scores rank suppliers after these
+conditions are checked. QC inspection rows still require their own evidence.
+
 ## Output
 
 Return:

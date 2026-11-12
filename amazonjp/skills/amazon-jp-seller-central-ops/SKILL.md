@@ -45,7 +45,7 @@ Collect:
 For file-based checks, run:
 
 ```bash
-python3 scripts/build_seller_central_checklist.py \
+python3 scripts/build_seller_central_checklist.py --workspace /path/to/launch --launch-id L1 \
   --listing listing_package.csv \
   --evidence evidence_matrix.csv \
   --gate-decision launch_gate.decision.csv \
@@ -72,3 +72,22 @@ Return:
 - flat-file or manual upload actions
 - owner-facing operation log
 - evidence still needed before ASIN/FBA/ads
+
+## Bound approval contract
+
+Install these skills together, preserving the sibling directory layout; scripts share
+`amazon-jp-sop-orchestrator/scripts/approval_contract.py` and the Launch Gate validator.
+The launch must currently be at `G9`. `--workspace` and `--launch-id` are required.
+Downstream scripts verify the matching human-approved gate events and SHA-256 of the
+approved files (including referenced local proof snapshots). A same-SKU pass CSV from
+another launch or a changed evidence file cannot release this launch. Keep approved
+snapshots immutable. Older workspaces without bound approvals require a new audited
+launch; copying a historical pass CSV does not migrate approval.
+The local workspace is the trust boundary; this is not a signed approval/auth service.
+
+Compliance uses `control_ref`, not free-text control names. Valid CLAIMS-JP-01
+`not_applicable` evidence carries through from G6 with a reason, owner, source, date
+and nonempty local snapshot. JP-IMPORT-FBA-01 cannot be not_applicable.
+
+G8 approval must include the exact listing CSV and keyword master files consumed by
+Seller Central and Ads. A different file, even for the same SKU, requires a new audit.
