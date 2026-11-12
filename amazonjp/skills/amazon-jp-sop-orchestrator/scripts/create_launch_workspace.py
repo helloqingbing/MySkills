@@ -2,6 +2,7 @@
 import argparse
 import csv
 import os
+import json
 
 
 DIRECTORIES = [
@@ -28,8 +29,16 @@ TEMPLATES = {
         "status", "next_action", "blocking_reason",
     ],
     "live_data/report_manifest.csv": [
-        "report_name", "source_file", "date_range", "freshness", "rows",
-        "blocking_gap", "next_import",
+        "report_name", "source_file", "period_start", "period_end", "exported_at", "generated_at", "freshness", "rows",
+        "sha256", "normalized_sha256", "sku_scope", "blocking_gap", "normalized_file",
+    ],
+    "gate_decisions.csv": [
+        "run_id", "launch_id", "sku", "gate", "decision", "reason", "owner",
+        "approver", "decision_at", "next_action", "due_date",
+    ],
+    "artifact_manifest.csv": [
+        "launch_id", "sku", "gate", "artifact_path", "artifact_type", "source_file",
+        "date_range", "generated_at", "row_count", "checksum", "owner", "freshness", "blocking_gap",
     ],
     "sourcing/supplier_scorecard.csv": [
         "candidate_id", "sku", "supplier_name", "unit_cost_jpy", "moq",
@@ -42,7 +51,7 @@ TEMPLATES = {
     ],
     "launch_gate/evidence_matrix.csv": [
         "candidate_id", "sku", "control_ref", "control_area", "requirement",
-        "evidence", "status", "owner", "due_date", "blocking_reason",
+        "evidence", "evidence_source", "evidence_date", "status", "owner", "due_date", "blocking_reason",
     ],
     "launch_gate/landed_cost_model.csv": [
         "candidate_id", "sku", "selling_price_jpy", "unit_cost_jpy",
@@ -73,13 +82,13 @@ TEMPLATES = {
         "owner", "action", "expected_proof", "status",
     ],
     "fba/fba.shipment_plan.csv": [
-        "sku", "asin", "daily_sales_estimate", "fulfillable_qty",
+        "sku", "launch_phase", "asin", "daily_sales_estimate", "fulfillable_qty",
         "inbound_qty", "days_of_supply", "total_replenishment_lead_days",
         "reorder_point_qty", "recommended_first_shipment_qty",
         "estimated_stockout_date", "status", "next_action",
     ],
     "fba/fba.replenishment_alerts.csv": [
-        "sku", "asin", "daily_sales_estimate", "fulfillable_qty",
+        "sku", "launch_phase", "asin", "daily_sales_estimate", "fulfillable_qty",
         "inbound_qty", "days_of_supply", "total_replenishment_lead_days",
         "reorder_point_qty", "recommended_first_shipment_qty",
         "estimated_stockout_date", "status", "next_action",
@@ -98,6 +107,7 @@ TEMPLATES = {
     "operations/performance.actions.csv": [
         "launch_id", "sku", "area", "action", "reason", "owner", "status",
     ],
+    "operations/performance.decisions.csv": ["launch_id", "sku", "decision"],
     "operations/performance.alerts.csv": [
         "launch_id", "sku", "search_term", "action", "reason", "sales_jpy",
     ],
@@ -134,6 +144,10 @@ def main():
     if not os.path.exists(readme_path):
         with open(readme_path, "w", encoding="utf-8") as f:
             f.write(README)
+    state_path = os.path.join(args.output_dir, "workflow_state.json")
+    if not os.path.exists(state_path):
+        with open(state_path, "w", encoding="utf-8") as f:
+            json.dump({"schema_version": 1, "launches": {}}, f, indent=2)
     print(args.output_dir)
 
 

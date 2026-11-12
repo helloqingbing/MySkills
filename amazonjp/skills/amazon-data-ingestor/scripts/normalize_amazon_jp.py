@@ -102,6 +102,13 @@ MAPPINGS = {
         "ACOS": "acos_pct",
     },
 }
+REQUIRED_TARGETS = {
+    "niches": {"niche_name", "top_search_term", "search_volume_360d"},
+    "products": {"product_title"},
+    "search_terms": {"search_term"},
+    "supplier_quotes": {"supplier_name", "unit_cost_jpy"},
+    "ad_search_terms": {"search_term", "spend_jpy", "orders"},
+}
 
 
 def clean_value(field, value):
@@ -111,7 +118,14 @@ def clean_value(field, value):
     if value == "":
         return ""
     if field.endswith("_jpy"):
-        return re.sub(r"[^0-9.]", "", value)
+        cleaned = re.sub(r"[^0-9.\-]", "", value)
+        try:
+            number = float(cleaned)
+        except ValueError:
+            raise ValueError(f"invalid JPY value: {value}")
+        if number < 0:
+            raise ValueError(f"negative JPY value: {value}")
+        return cleaned
     if field.endswith("_pct"):
         return re.sub(r"[^0-9.\-]", "", value)
     if field in {
@@ -149,6 +163,10 @@ def normalize_file(kind, path, output_dir):
             fieldnames.append(target)
     with open(path, newline="", encoding="utf-8-sig") as src:
         reader = csv.DictReader(src)
+        available = {target for source, target in mapping.items() if source in (reader.fieldnames or [])}
+        missing = REQUIRED_TARGETS[kind] - available
+        if missing:
+            raise ValueError(f"{kind}: missing required headers {', '.join(sorted(missing))}")
         rows = []
         for row in reader:
             normalized = {field: "" for field in fieldnames}
@@ -157,6 +175,12 @@ def normalize_file(kind, path, output_dir):
                 if value not in (None, ""):
                     normalized[target] = clean_value(target, value)
             rows.append(normalized)
+    if not rows:
+        raise ValueError(f"{kind}: input has no rows")
+    for number, row in enumerate(rows, 2):
+        missing = [field for field in REQUIRED_TARGETS[kind] if not row[field]]
+        if missing:
+            raise ValueError(f"{kind}: row {number} missing {', '.join(sorted(missing))}")
 
     os.makedirs(output_dir, exist_ok=True)
     out_path = os.path.join(output_dir, f"{kind}.normalized.csv")

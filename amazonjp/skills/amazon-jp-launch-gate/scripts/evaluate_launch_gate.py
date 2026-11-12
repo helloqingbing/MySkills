@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
 import argparse
 import csv
+import math
 from collections import Counter
+from collections import defaultdict
+from datetime import date
+from pathlib import Path
+
+REQUIRED_CONTROLS = {"AMZ-JP-CAT-01", "GTIN-ASIN-01", "IP-JP-01", "JP-LABEL-CERT-01", "JP-IMPORT-FBA-01", "SUPPLIER-QC-01", "CLAIMS-JP-01", "ECON-JP-01"}
 
 
 MAJOR_COST_FIELDS = [
@@ -25,7 +31,8 @@ def parse_number(value):
     if value is None or str(value).strip() == "":
         return None
     try:
-        return float(str(value).replace(",", "").replace("￥", "").strip())
+        number = float(str(value).replace(",", "").replace("￥", "").strip())
+        return number if math.isfinite(number) else None
     except ValueError:
         return None
 
@@ -41,22 +48,18 @@ def get(row, name):
     return (row.get(name) or "").strip()
 
 
-def evaluate_evidence(rows):
-    statuses = Counter((get(row, "status") or "needs_proof").lower() for row in rows)
-    blocked = [row for row in rows if (get(row, "status").lower() == "blocked")]
-    needs = [
-        row for row in rows
-        if (get(row, "status").lower() in {"", "needs_proof", "pending", "unknown"})
-    ]
-    return statuses, blocked, needs
-
-
 def evaluate_cost(row, min_margin_pct):
     missing = [field for field in MAJOR_COST_FIELDS if parse_number(row.get(field)) is None]
+    missing += [field for field in OPTIONAL_COST_FIELDS if get(row, field) and parse_number(row.get(field)) is None]
+    missing += [field for field in MAJOR_COST_FIELDS + OPTIONAL_COST_FIELDS if parse_number(row.get(field)) is not None and parse_number(row.get(field)) < 0]
+    if parse_number(row.get("selling_price_jpy")) == 0:
+        missing.append("selling_price_jpy must be positive")
     if missing:
         return {
+            "sku": get(row, "sku"),
+            "candidate_id": get(row, "candidate_id"),
             "decision": "blocked",
-            "reason": f"missing major cost fields: {', '.join(missing)}",
+            "reason": f"invalid cost fields: {', '.join(sorted(set(missing)))}",
         }
 
     selling_price = parse_number(row.get("selling_price_jpy")) or 0.0
@@ -88,78 +91,101 @@ def evaluate_cost(row, min_margin_pct):
     }
 
 
-def final_decision(blocked_controls, needs_controls, cost_results):
-    if blocked_controls:
-        return "blocked"
-    if any(row["decision"] == "blocked" for row in cost_results):
-        return "blocked"
-    if needs_controls:
-        return "needs_proof"
-    if not cost_results:
-        return "needs_proof"
-    return "pass"
+def valid_proof(value, evidence_root):
+    if "://" in value:
+        return False
+    path = Path(value)
+    if not path.is_absolute():
+        path = Path(evidence_root) / path
+    return path.is_file() and path.stat().st_size > 0
 
 
-def write_decision_csv(path, decision, statuses, blocked, needs, cost_results):
-    rows = [{
-        "decision": decision,
-        "evidence_statuses": ";".join(f"{k}:{v}" for k, v in sorted(statuses.items())),
-        "blocked_controls": len(blocked),
-        "needs_proof_controls": len(needs),
-        "cost_rows": len(cost_results),
-    }]
-    with open(path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
-        writer.writeheader()
-        writer.writerows(rows)
+def evaluate_sku(sku, evidence, costs, min_margin_pct, evidence_root="."):
+    """Evaluate a single SKU; omitted and malformed controls fail closed."""
+    blocked, needs = [], []
+    if not sku:
+        needs.append("missing SKU")
+    by_ref = defaultdict(list)
+    for row in evidence:
+        by_ref[get(row, "control_ref")].append(row)
+    for ref in sorted(REQUIRED_CONTROLS):
+        rows = by_ref[ref]
+        blocked.extend(f"{ref}: {get(row, 'blocking_reason') or 'blocked'}"
+                       for row in rows if get(row, "status").lower() == "blocked")
+        if len(rows) != 1:
+            needs.append(f"{ref}: expected one row, got {len(rows)}")
+            continue
+        row = rows[0]
+        status = get(row, "status").lower()
+        if status == "needs_proof":
+            needs.append(f"{ref}: needs proof")
+        elif status not in {"pass", "not_applicable", "blocked"}:
+            needs.append(f"{ref}: invalid status {status or '<blank>'}")
+        if status in {"pass", "not_applicable"}:
+            for field in ("owner", "evidence", "evidence_source", "evidence_date"):
+                if not get(row, field):
+                    needs.append(f"{ref}: missing {field}")
+            try:
+                proof_date = date.fromisoformat(get(row, "evidence_date"))
+                if proof_date > date.today():
+                    needs.append(f"{ref}: evidence_date is in the future")
+            except ValueError:
+                needs.append(f"{ref}: invalid evidence_date")
+            if get(row, "evidence") and not valid_proof(get(row, "evidence"), evidence_root):
+                needs.append(f"{ref}: local evidence snapshot is missing or empty")
+            if status == "not_applicable" and not get(row, "blocking_reason"):
+                needs.append(f"{ref}: not_applicable requires a reason")
+            if status == "not_applicable" and ref not in {"JP-LABEL-CERT-01", "CLAIMS-JP-01"}:
+                needs.append(f"{ref}: cannot be not_applicable")
+    for ref in set(by_ref) - REQUIRED_CONTROLS:
+        needs.append(f"unknown control {ref or '<blank>'}")
+        blocked.extend(f"{ref or '<blank>'}: blocked" for row in by_ref[ref]
+                       if get(row, "status").lower() == "blocked")
+    economics = [evaluate_cost(row, min_margin_pct) for row in costs]
+    if len(economics) != 1:
+        needs.append(f"cost model: expected one row, got {len(economics)}")
+    blocked += [row["reason"] for row in economics if row["decision"] == "blocked"]
+    statuses = Counter(get(row, "status").lower() for row in evidence)
+    decision = "blocked" if blocked else "needs_proof" if needs else "pass"
+    return {"sku": sku, "candidate_id": get(costs[0], "candidate_id") if costs else "",
+            "decision": decision, "evidence_statuses": ";".join(f"{k}:{v}" for k, v in sorted(statuses.items())),
+            "blocked_controls": len(blocked), "needs_proof_controls": len(needs),
+            "cost_rows": len(economics), "reasons": "; ".join(blocked + needs), "economics": economics}
 
 
-def write_report(path, decision, statuses, blocked, needs, cost_results):
-    with open(path, "w", encoding="utf-8") as f:
-        f.write("# Amazon JP Launch Gate Report\n\n")
-        f.write(f"Final decision: `{decision}`\n\n")
-        f.write("## Evidence Status\n\n")
-        for status, count in sorted(statuses.items()):
-            f.write(f"- {status}: {count}\n")
-        if blocked:
-            f.write("\n## Blocked Controls\n\n")
-            for row in blocked:
-                f.write(f"- `{get(row, 'control_ref')}` {get(row, 'requirement')}: {get(row, 'blocking_reason') or 'blocked'}\n")
-        if needs:
-            f.write("\n## Needs Proof\n\n")
-            for row in needs[:20]:
-                f.write(f"- `{get(row, 'control_ref')}` {get(row, 'requirement')} owner={get(row, 'owner') or '-'}\n")
-        f.write("\n## Economics\n\n")
-        if cost_results:
-            f.write("| Candidate | SKU | Price | Landed Cost | Gross Margin | Break-even ACOS | Decision | Reason |\n")
-            f.write("|---|---|---:|---:|---:|---:|---|---|\n")
-            for row in cost_results:
-                f.write(
-                    f"| {row.get('candidate_id', '')} | {row.get('sku', '')} | "
-                    f"{row.get('selling_price_jpy', '')} | {row.get('landed_cost_jpy', '')} | "
-                    f"{row.get('gross_margin_pct', '')}% | {row.get('break_even_acos_pct', '')}% | "
-                    f"{row['decision']} | {row['reason']} |\n"
-                )
-        else:
-            f.write("- No landed cost rows provided.\n")
+def evaluate_all(evidence, costs, min_margin_pct, evidence_root="."):
+    by_sku_evidence, by_sku_cost = defaultdict(list), defaultdict(list)
+    for row in evidence:
+        by_sku_evidence[get(row, "sku")].append(row)
+    for row in costs:
+        by_sku_cost[get(row, "sku")].append(row)
+    skus = sorted(set(by_sku_evidence) | set(by_sku_cost)) or [""]
+    return [evaluate_sku(sku, by_sku_evidence[sku], by_sku_cost[sku], min_margin_pct, evidence_root) for sku in skus]
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--evidence", required=True)
-    parser.add_argument("--costs")
+    parser.add_argument("--costs", required=True)
     parser.add_argument("--min-margin-pct", type=float, default=35.0)
     parser.add_argument("--output-prefix", default="launch_gate")
     args = parser.parse_args()
 
     evidence = read_csv(args.evidence)
     costs = read_csv(args.costs)
-    statuses, blocked, needs = evaluate_evidence(evidence)
-    cost_results = [evaluate_cost(row, args.min_margin_pct) for row in costs]
-    decision = final_decision(blocked, needs, cost_results)
-
-    write_decision_csv(f"{args.output_prefix}.decision.csv", decision, statuses, blocked, needs, cost_results)
-    write_report(f"{args.output_prefix}.report.md", decision, statuses, blocked, needs, cost_results)
+    results = evaluate_all(evidence, costs, args.min_margin_pct, Path(args.evidence).resolve().parent)
+    with open(f"{args.output_prefix}.decision.csv", "w", newline="", encoding="utf-8") as f:
+        fields = ["sku", "candidate_id", "decision", "evidence_statuses", "blocked_controls", "needs_proof_controls", "cost_rows", "reasons"]
+        writer = csv.DictWriter(f, fieldnames=fields)
+        writer.writeheader()
+        writer.writerows({field: result[field] for field in fields} for result in results)
+    with open(f"{args.output_prefix}.report.md", "w", encoding="utf-8") as f:
+        f.write("# Amazon JP Launch Gate Report\n\n")
+        for result in results:
+            f.write(f"## SKU {result['sku'] or '<missing>'}: {result['decision']}\n\n")
+            f.write(f"- Reasons: {result['reasons'] or 'all required controls passed'}\n")
+            for cost in result["economics"]:
+                f.write(f"- Economics: {cost['decision']}; {cost['reason']}\n")
     print(f"{args.output_prefix}.decision.csv")
     print(f"{args.output_prefix}.report.md")
 

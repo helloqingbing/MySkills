@@ -54,7 +54,7 @@ Every structured artifact should include as many of these as possible:
 | G8 listing | product requirements, keyword master | `listing_package.md`, `claim_ledger.csv` | copy and claims are proof-backed |
 | G9 Seller Central | listing package, evidence | `seller_central.checklist.csv`, `seller_central.ops_log.csv` | required upload fields and proof ready |
 | G10 FBA | package specs, inventory | `fba.shipment_plan.csv`, `fba.replenishment_alerts.csv` | labels, box specs, and inventory risk clear |
-| G11 ads | economics, keyword master | `ads_campaigns.csv`, `ads_negatives.csv`, `30_day_plan.md` | break-even ACOS and budget visible |
+| G11 ads | economics, keyword master | `ads.campaigns.csv`, `ads.targets.csv`, `ads.negatives.csv`, `ads.30_day_plan.md` | break-even ACOS and campaign budget visible |
 | G12 performance | ad/search/order/inventory data | `performance.actions.csv`, `performance.alerts.csv`, `launch_metrics_weekly.csv` | actions feed back to ads/listing/product/FBA/QC |
 
 ## `amazon_keyword_master.csv`
@@ -86,7 +86,9 @@ Every structured artifact should include as many of these as possible:
 | `control_ref` | e.g. AMZ-JP-CAT-01 |
 | `control_area` | category/ip/import/fba/label/claim/gtin/cost |
 | `requirement` | What must be proven |
-| `evidence` | File, URL, screenshot, report, or user confirmation |
+| `evidence` | Nonempty local evidence snapshot; save remote URLs as local files before pass |
+| `evidence_source` | Source system or provider; required before pass |
+| `evidence_date` | ISO proof date; required before pass |
 | `status` | pass/needs_proof/blocked/not_applicable |
 | `owner` | Responsible person/team |
 | `due_date` | Optional |
@@ -138,13 +140,19 @@ Every structured artifact should include as many of these as possible:
 
 | Field | Notes |
 |---|---|
-| `report_name` | Seller Central, Amazon Ads, BA, SQP, inventory, returns, reviews |
-| `source_file` | Original export path or filename |
-| `date_range` | Data period |
+| `report_name` | Business metrics, ads search terms, inventory, returns, reviews |
+| `source_file` | Original export path |
+| `period_start` | First date covered, ISO date |
+| `period_end` | Latest date covered, ISO date |
+| `exported_at` | User-supplied export timestamp |
+| `generated_at` | Normalization timestamp |
 | `freshness` | fresh/stale/unknown |
 | `rows` | Row count |
+| `sha256` | Source file checksum |
+| `normalized_sha256` | Normalized file checksum |
+| `sku_scope` | Semicolon-separated SKUs covered by the source report |
 | `blocking_gap` | Missing field or permission issue |
-| `next_import` | Next expected update |
+| `normalized_file` | Output path |
 
 ## `sourcing/qc_checklist.csv`
 
@@ -174,6 +182,7 @@ Every structured artifact should include as many of these as possible:
 | Field | Notes |
 |---|---|
 | `sku` | Required |
+| `launch_phase` | `prelaunch` for first shipment, `live` for replenishment |
 | `asin` | Required when known |
 | `daily_sales_estimate` | Used for replenishment |
 | `fulfillable_qty` | Current sellable FBA inventory |
@@ -195,6 +204,25 @@ Every structured artifact should include as many of these as possible:
 | `reason` | Metric and threshold |
 | `owner` | Responsible operator |
 | `status` | todo/doing/done/blocked |
+
+## Decision recording
+
+`scripts/create_launch_workspace.py --output-dir WORKSPACE` creates `workflow_state.json`,
+`gate_decisions.csv`, and `artifact_manifest.csv`. For each G0–G12 gate, prepare a decision CSV
+with exactly one `sku,gate,decision` row for that SKU and record a passing decision with:
+
+```bash
+python3 scripts/record_gate.py --workspace WORKSPACE --launch-id LAUNCH-1 \
+  --sku SKU-1 --gate G0 --decision pass --owner operator --approver lead \
+  --decision-file WORKSPACE/live_data/g0.decision.csv \
+  --evidence-file WORKSPACE/live_data/report_manifest.csv
+```
+
+Passing requires the correct next gate, an approver, a matching `pass` decision row, and existing
+evidence files. Non-pass decisions require `--reason` and keep the current gate active.
+For G6, pass both `evidence_matrix.csv` and `landed_cost_model.csv` as evidence files. The
+recorder recalculates the launch-gate decision from those inputs. `workflow_state.json` is the
+authoritative commit; the two CSV logs are regenerated from it under a workspace lock.
 
 ## Candidate Status Values
 

@@ -4,11 +4,11 @@
 
 ## P0 - 生产级安全线
 
-- [ ] 建立 `workflow_state.json`
+- [x] 建立 `workflow_state.json`
   - 记录当前 SKU 的 lifecycle state、当前 Gate、最近决策、阻塞项、下一动作。
   - 区分 lifecycle state、gate decision、post-launch action，避免混用 `status`。
 
-- [ ] 建立 `gate_decisions.csv`
+- [x] 建立 `gate_decisions.csv`
   - 字段建议：`run_id`, `launch_id`, `sku`, `gate`, `decision`, `reason`, `owner`, `approver`, `decision_at`, `next_action`, `due_date`。
   - 每次 Gate 决策必须留痕。
 
@@ -16,16 +16,16 @@
   - 字段建议：`artifact_path`, `artifact_type`, `source_file`, `date_range`, `generated_at`, `row_count`, `checksum`, `owner`, `freshness`, `blocking_gap`。
   - 所有 CSV、截图、报告、Seller Central/FBA 证据都必须进入 manifest。
 
-- [ ] 建立 `report_manifest.csv`
+- [x] 建立 `report_manifest.csv`
   - 覆盖 Seller Central、Amazon Ads、库存、退货、评论、Business Report、Search Term Report。
   - 必须记录导出时间、覆盖日期、行数、hash、是否 stale。
 
-- [ ] 增加严格 Launch Gate validator
+- [x] 增加严格 Launch Gate validator
   - 强制校验必备 controls 全量存在。
   - 缺控制项、缺证据、缺 owner、缺日期、缺来源时不能 `pass`。
   - `user confirmation` 只能作为备注，不能作为合规/IP/JAN/FBA/claim proof 的 pass 证据。
 
-- [ ] 修正 Performance Reviewer 的放量规则
+- [x] 修正 Performance Reviewer 的放量规则
   - 缺关键指标、报表过期、时间窗不足、无库存/退货/广告数据时输出 `needs_proof`。
   - 禁止在数据不足时默认 `scale`。
 

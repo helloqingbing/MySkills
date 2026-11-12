@@ -41,7 +41,13 @@
 如果后续以本工程目录为来源修改 skill，可以将需要启用的 skill 目录复制回 Codex skills 目录：
 
 ```bash
-cp -R /Users/yunzhe/workspace/amazonjp/skills/amazon-* ~/.codex/skills/
+cp -R ./skills/amazon-* ~/.codex/skills/
 ```
 
 复制后重启 Codex 会话，让新 skill 描述重新加载。
+
+## 验证
+
+在工程根目录运行 `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v`。
+测试包括空证据、跨 SKU 隔离、过期报表、缺指标放量、FBA proof、Seller Central proof
+以及一条使用合成数据从原始运营报表走到复盘决策的回归链路。真实 SKU 验收仍需实际导出与后台证明。

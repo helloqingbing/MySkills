@@ -8,9 +8,11 @@
 
 - `index.html`：主入口，用法指南与流程执行说明。
 - `architecture.html`：覆盖矩阵独立展示页。
+- `architecture-review.html`：审查后的执行链路与高风险决策节点。
 - `assets/architecture-coverage.png`：用户确认后的最终覆盖矩阵截图。
 - `skills/`：Amazon JP 跨境电商流程相关 Codex skills 的工程内副本，包含研究、执行、实时数据和复盘能力。
 - `skills/README.md`：skill 清单、推荐调用顺序和重新安装说明。
+- `tests/test_workflow.py`：决策逻辑与合成 SKU 回归测试。
 
 ## 使用方式
 

@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Amazon JP Launch OS · Current Architecture Review</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}body{margin:0;padding:28px;background:#020617;color:#e2e8f0;font:13px/1.65 'JetBrains Mono',monospace}main{max-width:1220px;margin:auto}.head{display:flex;align-items:center;gap:12px}.pulse{width:11px;height:11px;border-radius:50%;background:#22d3ee;box-shadow:0 0 16px #22d3ee;animation:pulse 2s infinite}@keyframes pulse{50%{opacity:.4}}h1{font-size:23px;margin:0}.sub{color:#94a3b8;margin:7px 0 22px 23px}.diagram{border:1px solid #334155;border-radius:12px;background:#0f172a;padding:18px;overflow:auto}svg{display:block;width:100%;min-width:1000px}.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:18px}.card{border:1px solid #334155;border-radius:12px;background:#0f172a;padding:17px}.card h2{font-size:14px;margin:0 0 10px}.card p{margin:0 0 8px;color:#cbd5e1}.card p:last-child{margin-bottom:0}.rose{color:#fb7185}.amber{color:#fbbf24}.cyan{color:#22d3ee}.foot{font-size:11px;color:#64748b;text-align:center;margin-top:18px}@media(max-width:760px){body{padding:13px}.cards{grid-template-columns:1fr}}
+</style>
+</head>
+<body><main>
+<div class="head"><span class="pulse"></span><h1>Amazon JP Launch OS · 当前架构复审</h1></div>
+<p class="sub">下图和原始审查证据保留修复前快照；修复结果及剩余人工验证边界见页面末尾。</p>
+<div class="diagram"><svg viewBox="0 0 1100 590" role="img" aria-label="Amazon JP 当前流程与剩余控制缺口">
+<defs><pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0L0 0 0 40" fill="none" stroke="#1e293b" stroke-width=".6"/></pattern><marker id="arrow" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0 0L10 4 0 8Z" fill="#64748b"/></marker></defs>
+<rect width="1100" height="590" fill="url(#grid)"/>
+<!-- Connections precede translucent nodes. -->
+<g fill="none" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"><path d="M180 190H220"/><path d="M390 190H430"/><path d="M600 190H640"/><path d="M810 190H850"/><path d="M935 230V310"/><path d="M850 350H810"/><path d="M640 350H600"/><path d="M430 350H390"/></g>
+<g fill="none" stroke="#fb923c" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#arrow)"><path d="M305 230V310"/><path d="M515 310V230"/><path d="M725 310V230"/><path d="M935 310V230"/></g>
+<g fill="none" stroke="#fb7185" stroke-width="1.4" stroke-dasharray="5 4"><rect x="412" y="125" width="206" height="124" rx="10"/><rect x="622" y="125" width="206" height="124" rx="10"/><rect x="832" y="285" width="206" height="125" rx="10"/></g>
+<text x="424" y="141" fill="#fb7185" font-size="9">P0 · Gate 结果可自填</text><text x="634" y="141" fill="#fb7185" font-size="9">P0 · 预算可超额</text><text x="844" y="301" fill="#fb7185" font-size="9">P0 · 报表未按 SKU 绑定</text>
+<g text-anchor="middle" font-weight="600">
+<g><rect x="30" y="155" width="150" height="75" rx="6" fill="#0f172a"/><rect x="30" y="155" width="150" height="75" rx="6" fill="rgba(30,41,59,.5)" stroke="#94a3b8" stroke-width="1.5"/><text x="105" y="181" fill="#fff" font-size="11">原始导出</text><text x="105" y="200" fill="#94a3b8" font-size="8">SC / Ads / 库存 / 评论</text></g>
+<g><rect x="220" y="155" width="170" height="75" rx="6" fill="#0f172a"/><rect x="220" y="155" width="170" height="75" rx="6" fill="rgba(6,78,59,.4)" stroke="#34d399" stroke-width="1.5"/><text x="305" y="181" fill="#fff" font-size="11">数据清洗</text><text x="305" y="200" fill="#94a3b8" font-size="8">live sync / ingestor</text></g>
+<g><rect x="430" y="155" width="170" height="75" rx="6" fill="#0f172a"/><rect x="430" y="155" width="170" height="75" rx="6" fill="rgba(136,19,55,.4)" stroke="#fb7185" stroke-width="1.5"/><text x="515" y="181" fill="#fff" font-size="11">Gate / 状态机</text><text x="515" y="200" fill="#fda4af" font-size="8">record_gate + validator</text></g>
+<g><rect x="640" y="155" width="170" height="75" rx="6" fill="#0f172a"/><rect x="640" y="155" width="170" height="75" rx="6" fill="rgba(136,19,55,.4)" stroke="#fb7185" stroke-width="1.5"/><text x="725" y="181" fill="#fff" font-size="11">Seller / FBA / Ads</text><text x="725" y="200" fill="#fda4af" font-size="8">预算逐目标重复</text></g>
+<g><rect x="850" y="155" width="170" height="75" rx="6" fill="#0f172a"/><rect x="850" y="155" width="170" height="75" rx="6" fill="rgba(6,78,59,.4)" stroke="#34d399" stroke-width="1.5"/><text x="935" y="181" fill="#fff" font-size="11">经营复盘</text><text x="935" y="200" fill="#94a3b8" font-size="8">actions / decisions</text></g>
+<g><rect x="220" y="310" width="170" height="75" rx="6" fill="#0f172a"/><rect x="220" y="310" width="170" height="75" rx="6" fill="rgba(76,29,149,.4)" stroke="#a78bfa" stroke-width="1.5"/><text x="305" y="337" fill="#fff" font-size="11">Report Manifest</text><text x="305" y="356" fill="#94a3b8" font-size="8">按报告类型保存</text></g>
+<g><rect x="430" y="310" width="170" height="75" rx="6" fill="#0f172a"/><rect x="430" y="310" width="170" height="75" rx="6" fill="rgba(76,29,149,.4)" stroke="#a78bfa" stroke-width="1.5"/><text x="515" y="337" fill="#fff" font-size="11">Workflow State</text><text x="515" y="356" fill="#94a3b8" font-size="8">Gate 日志 / artifact 清单</text></g>
+<g><rect x="640" y="310" width="170" height="75" rx="6" fill="#0f172a"/><rect x="640" y="310" width="170" height="75" rx="6" fill="rgba(120,53,15,.3)" stroke="#fbbf24" stroke-width="1.5"/><text x="725" y="337" fill="#fff" font-size="11">人工 Proof</text><text x="725" y="356" fill="#94a3b8" font-size="8">文件存在性检查</text></g>
+<g><rect x="850" y="310" width="170" height="75" rx="6" fill="#0f172a"/><rect x="850" y="310" width="170" height="75" rx="6" fill="rgba(136,19,55,.4)" stroke="#fb7185" stroke-width="1.5"/><text x="935" y="337" fill="#fff" font-size="11">SKU 级放量</text><text x="935" y="356" fill="#fda4af" font-size="8">manifest 无 SKU 范围</text></g>
+</g>
+<text x="30" y="53" fill="#fbbf24" font-size="12" font-weight="600">覆盖：14 skills · 12 scripts · 17 regression tests</text>
+<text x="30" y="75" fill="#94a3b8" font-size="9">已有：必备 control 检查、前置决策校验、SKU 级结果、FBA proof、合成 SKU 回归</text>
+<text x="30" y="455" fill="#fb7185" font-size="10">已复现：假决策 CSV + 任意文本可推进至 G7；500 JPY 广告预算分配为 600 JPY；SKU-A 报表可支持 SKU-B scale</text>
+<text x="30" y="487" fill="#fbbf24" font-size="10">还需：零退货 / 零评论空报表支持、proof 内容与来源校验、跨文件原子写入、真实 SKU 验收</text>
+<text x="30" y="550" fill="#94a3b8" font-size="9">灰：外部输入　绿：处理节点　紫：持久记录　橙：人工证据　玫红：高风险决策　虚线：证据或控制连接</text>
+</svg></div>
+<section class="cards">
+<div class="card"><h2 class="rose">P0 · 控制与来源</h2><p>Gate 顺序受控，但通过依据可由调用方自填；没有 G0–G12 与各校验器输出的强绑定。</p><p>Report Manifest 仅按报告类型索引，放量决策没有确认报表覆盖当前 SKU。</p></div>
+<div class="card"><h2 class="rose">P0 · 广告预算</h2><p>活动预算设置了每组至少 300 JPY 的下限。500 JPY 总预算可生成 600 JPY 的两个活动预算。</p><p>目标行重复写入活动预算，CSV 还缺明确的 campaign 与 target 分表。</p></div>
+<div class="card"><h2 class="amber">P1 · 完整性与证据</h2><p>零退货或零评论的表头-only 报表被拒绝，导致新 SKU 无法形成完整 Manifest。</p><p>人工 proof 目前只检查非空文件；同一文件可用于多个不同字段。真实 SKU 链路尚未验收。</p></div>
+</section>
+<section class="card" style="margin-top:18px">
+<h2>审查证据与修复顺序</h2>
+<p><span class="rose">P0 · Gate 来源未验证。</span> <code>record_gate.py:72-79</code> 只核对 CSV 的 sku/gate/decision 字段和证据文件存在性，未校验决策由对应阶段的校验器生成，也未核对输入哈希。复现：用自填的 13 份 pass CSV 和同一个任意文本文件依次记录 G0–G12，状态变为 complete。应为每个 Gate 固定校验器、输入清单和决策产物，并在推进时验证产物来源与摘要。</p>
+<p><span class="rose">P0 · 广告预算可超支。</span> <code>plan_amazon_ads.py:155-156,175-195,257-268</code> 每个活动独立取至少 300 JPY。复现：SKU 日预算 500 JPY，Auto 和 Exact 活动各分到 300 JPY，合计 600 JPY。应先检查活动数与最小预算的可行性，再按活动分配且保证总额不超过 SKU 预算。</p>
+<p><span class="rose">P0 · 报表不能证明 SKU 覆盖。</span> <code>normalize_live_reports.py:250-255</code> 的 manifest 没有 SKU/ASIN 范围；<code>review_performance.py:219-240,276-308</code> 只按报告类型检查，且仅检查哈希长度、文件存在。复现：五份只含 SKU-A 的报表清单也得到空问题列表，可支持 SKU-B 的 scale 指标行。应把报表的 SKU 范围、期间、行数和真实 SHA-256 与决策行逐一绑定。</p>
+<p><span class="amber">P1 · 零事件与人工证据。</span> <code>normalize_live_reports.py:189-190</code> 拒绝只有表头的退货或评论报表；<code>review_performance.py:236-239</code> 也拒绝零行。<code>build_seller_central_checklist.py:93-107</code> 和 <code>plan_fba_shipment.py:97-101</code> 只检查 proof 文件非空，未验证内容、SKU 或操作时间。应为零事件引入有来源的明确声明，并给 proof 增加字段级关联与人工复核。</p>
+<p><span class="amber">P1 · 状态写入一致性。</span> <code>record_gate.py:84-98</code> 顺序追加两个 CSV 后才替换 JSON，没有锁或跨文件事务；中途失败或并发调用会留下互相矛盾的记录。应使用单一事务存储，或实现锁、预写日志和恢复校验。</p>
+<p><span class="cyan">验证范围。</span> 运行 <code>PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v</code>：17/17 通过；另用临时目录复现上述三个 P0 场景。工程尚无真实 SKU 从原始导出到后台证明及复盘的验收记录。</p>
+</section>
+<section class="card" style="margin-top:18px">
+<h2 class="cyan">修复结果 · 2026-11-12</h2>
+<p>G6 由记录器重新运行 Launch Gate 校验器，伪造的 pass CSV 无法单独推进；状态 JSON 在工作区锁内提交，CSV 从该状态重建。</p>
+<p>广告预算按活动统一分配，低于 600 JPY 时只保留 Auto；campaigns.csv 与 targets.csv 分离，预算只出现在活动行。</p>
+<p>Report Manifest 增加 SKU 范围与规范化文件 SHA-256；复盘逐 SKU 检查范围、业务/库存行、源文件和规范化文件摘要及行数。零行退货/评论报表需显式 SKU 范围。</p>
+<p>Launch Gate 的 pass 证据必须是本地非空快照；Seller Central 与 FBA proof 拒绝空文件、非支持格式和同一文件复用多个字段。回归测试 24/24 通过。</p>
+<p class="amber">仍需人工验收：</p><p>外部 URL 或截图的真实内容、导出范围是否与 Seller Central 一致，以及真实 SKU 的完整运行，无法仅靠本地 CSV 校验确认。G0–G5、G7–G12 的人工 Gate 决策仍依赖审批人审查，不能视为自动验证。</p>
+</section>
+<p class="foot">Current code review · 2026-11-12 · architecture-review-current.html</p>
+</main></body></html>

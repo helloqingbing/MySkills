@@ -39,6 +39,10 @@ def read_csv(path):
         return list(csv.DictReader(f))
 
 
+def has_pass(path, sku, field="decision"):
+    return sum(row.get("sku") == sku and row.get(field) == "pass" for row in read_csv(path)) == 1
+
+
 def clamp(value, low, high):
     return max(low, min(high, value))
 
@@ -59,7 +63,7 @@ def normalize_relevance(value):
 
 def normalize_product(row, default_budget):
     asin = get(row, "asin", "ASIN", "Parent ASIN", "parent_asin", "sku")
-    price = parse_number(get(row, "price_jpy", "Price", "Selling Price", "Avg Selling Price (360d)"))
+    price = parse_number(get(row, "price_jpy", "selling_price_jpy", "Price", "Selling Price", "Avg Selling Price (360d)"))
     profit = parse_number(get(row, "gross_profit_jpy", "Gross Profit", "profit_jpy"))
     margin_pct = parse_number(get(row, "gross_margin_pct", "Gross Margin", "margin_pct"))
     if not profit and margin_pct and price:
@@ -69,6 +73,7 @@ def normalize_product(row, default_budget):
     target_acos = provided_target / 100.0 if provided_target else min(break_even_acos * 0.8, 0.35)
     daily_budget = parse_number(get(row, "daily_budget_jpy", "Daily Budget", "budget_jpy")) or default_budget
     return {
+        "sku": get(row, "sku", "SKU"),
         "asin": asin,
         "title": get(row, "title", "Product Title", "product_title"),
         "price_jpy": price,
@@ -85,6 +90,7 @@ def normalize_keyword(row):
     relevance = normalize_relevance(get(row, "relevance", "Relevance", "score"))
     volume = parse_number(get(row, "search_volume", "Search Volume", "Search Volume (360d)"))
     return {
+        "sku": get(row, "sku", "SKU"),
         "keyword": keyword,
         "cvr_pct": cvr,
         "relevance": relevance,
@@ -103,7 +109,8 @@ def normalize_search_term_report(row):
     orders = parse_number(get(row, "orders", "Orders", "7 Day Total Orders (#)"))
     sales = parse_number(get(row, "sales_jpy", "Sales", "7 Day Total Sales"))
     impressions = parse_number(get(row, "impressions", "Impressions"))
-    acos = parse_number(get(row, "acos_pct", "ACOS", "Advertising Cost of Sales"))
+    acos_text = get(row, "acos_pct", "ACOS", "Advertising Cost of Sales")
+    acos = parse_number(acos_text) if acos_text else (spend / sales * 100.0 if sales > 0 else 0.0)
     ctr = (clicks / impressions * 100.0) if impressions else 0.0
     cvr = (orders / clicks * 100.0) if clicks else 0.0
     return {
@@ -118,6 +125,7 @@ def normalize_search_term_report(row):
         "orders": orders,
         "sales_jpy": sales,
         "acos_pct": acos,
+        "acos_known": bool(acos_text) or sales > 0,
         "ctr_pct": ctr,
         "cvr_pct": cvr,
     }
@@ -144,8 +152,20 @@ def bid_from(product, cvr_pct, multiplier=1.0):
     return round(clamp(raw, 25, 150))
 
 
-def allocate_budget(total, share):
-    return max(300, round(total * share / 100.0))
+def allocate_budgets(total, shares):
+    """Allocate whole JPY at campaign level without exceeding the SKU cap."""
+    active = {name: share for name, share in shares.items() if share > 0}
+    while len(active) > 1 and total < 300 * len(active):
+        active.pop(min(active, key=active.get))
+    if total < 300:
+        raise ValueError("daily budget must be at least 300 JPY")
+    remaining = round(total) - 300 * len(active)
+    weight = sum(active.values())
+    budgets = {name: 300 + int(remaining * share / weight) for name, share in active.items()}
+    leftover = round(total) - sum(budgets.values())
+    for name in sorted(active, key=active.get, reverse=True)[:leftover]:
+        budgets[name] += 1
+    return {name: budgets.get(name, 0) for name in shares}
 
 
 def campaign_name(product, group):
@@ -167,11 +187,12 @@ def plan_for_product(product, keywords, competitors):
     total_budget = product["daily_budget_jpy"]
     collapsed = total_budget < 2000
     budget_shares = {
-        "AUTO_DISCOVERY": 45 if collapsed else 30,
+        "AUTO_DISCOVERY": 100 if total_budget < 600 else 45 if collapsed else 30,
         "BROAD_DISCOVERY": 0 if collapsed else 20,
-        "EXACT_PROFIT": 55 if collapsed else 35,
+        "EXACT_PROFIT": 0 if total_budget < 600 else 55 if collapsed else 35,
         "PRODUCT_TARGETING": 0 if collapsed else 15,
     }
+    budgets = allocate_budgets(total_budget, budget_shares)
 
     auto_bid = bid_from(product, 5.0, 0.8)
     campaigns.append({
@@ -183,20 +204,20 @@ def plan_for_product(product, keywords, competitors):
         "target": "*auto*",
         "match_type": "auto",
         "bid_jpy": auto_bid,
-        "daily_budget_jpy": allocate_budget(total_budget, budget_shares["AUTO_DISCOVERY"]),
+        "daily_budget_jpy": budgets["AUTO_DISCOVERY"],
         "purpose": "mine search terms and ASIN placements",
     })
 
     for kw in blocked_keywords:
         if kw.get("keyword"):
             negatives.append({
-                "campaign_name": campaign_name(product, "BROAD_DISCOVERY"),
+                "campaign_name": campaign_name(product, "BROAD_DISCOVERY" if budgets["BROAD_DISCOVERY"] else "AUTO_DISCOVERY"),
                 "negative_type": kw.get("ads_match_type") or "negative phrase",
                 "target": kw["keyword"],
                 "reason": "keyword master marked as blocked or negative",
             })
 
-    if budget_shares["BROAD_DISCOVERY"]:
+    if budgets["BROAD_DISCOVERY"]:
         for kw in mid_keywords[:30]:
             if kw.get("ads_match_type") and "negative" in kw["ads_match_type"].lower():
                 negatives.append({
@@ -224,11 +245,11 @@ def plan_for_product(product, keywords, competitors):
                 "target": kw["keyword"],
                 "match_type": "broad",
                 "bid_jpy": bid_from(product, kw["cvr_pct"] or 4.5, 0.78),
-                "daily_budget_jpy": allocate_budget(total_budget, budget_shares["BROAD_DISCOVERY"]),
+                "daily_budget_jpy": budgets["BROAD_DISCOVERY"],
                 "purpose": "long-tail discovery",
             })
 
-    for kw in high_keywords[:20]:
+    for kw in high_keywords[:20] if budgets["EXACT_PROFIT"] else []:
         if kw.get("ads_match_type") and "negative" in kw["ads_match_type"].lower():
             negatives.append({
                 "campaign_name": campaign_name(product, "EXACT_PROFIT"),
@@ -255,11 +276,11 @@ def plan_for_product(product, keywords, competitors):
             "target": kw["keyword"],
             "match_type": "exact",
             "bid_jpy": bid_from(product, kw["cvr_pct"] or 7.0, 1.0),
-            "daily_budget_jpy": allocate_budget(total_budget, budget_shares["EXACT_PROFIT"]),
+            "daily_budget_jpy": budgets["EXACT_PROFIT"],
             "purpose": "profit and rank high-intent terms",
         })
 
-    if budget_shares["PRODUCT_TARGETING"]:
+    if budgets["PRODUCT_TARGETING"]:
         for comp in competitors[:20]:
             if not comp["asin"]:
                 continue
@@ -277,7 +298,7 @@ def plan_for_product(product, keywords, competitors):
                 "target": comp["asin"],
                 "match_type": "asin target",
                 "bid_jpy": bid_from(product, 5.5, clamp(weakness, 0.7, 1.1)),
-                "daily_budget_jpy": allocate_budget(total_budget, budget_shares["PRODUCT_TARGETING"]),
+                "daily_budget_jpy": budgets["PRODUCT_TARGETING"],
                 "purpose": "capture competitor detail-page traffic",
             })
 
@@ -290,7 +311,7 @@ def feedback_action(row, product):
     term = row["search_term"]
     if has_forbidden_term(term):
         return "negate", "forbidden or out-of-scope term"
-    if row["orders"] >= 1 and (row["acos_pct"] == 0 or row["acos_pct"] <= target_acos_pct):
+    if row["orders"] >= 1 and row["acos_known"] and row["sales_jpy"] > 0 and row["acos_pct"] <= target_acos_pct:
         return "promote_exact", "orders with acceptable ACOS"
     if gross_profit and row["spend_jpy"] > gross_profit and row["orders"] == 0:
         return "negate", "spend exceeded gross profit without order"
@@ -306,13 +327,13 @@ def feedback_action(row, product):
 def build_feedback(products, report_rows):
     if not report_rows:
         return []
-    product = products[0] if products else {
-        "gross_profit_jpy": 0.0,
-        "target_acos": 0.3,
-    }
+    products_by_sku = {product["sku"]: product for product in products}
     rows = []
     for raw in report_rows:
         row = normalize_search_term_report(raw)
+        product = products_by_sku.get(row["sku"])
+        if product is None:
+            raise ValueError(f"search term SKU is absent from products: {row['sku']}")
         action, reason = feedback_action(row, product)
         row["action"] = action
         row["reason"] = reason
@@ -329,6 +350,22 @@ def write_csv(path, rows):
         writer.writerows(rows)
 
 
+def campaign_and_target_rows(rows):
+    campaigns = {}
+    targets = []
+    campaign_fields = ("campaign_name", "campaign_type", "targeting", "ad_group", "asin",
+                       "daily_budget_jpy", "purpose")
+    target_fields = ("campaign_name", "ad_group", "asin", "target", "match_type", "bid_jpy")
+    for row in rows:
+        campaign = {field: row[field] for field in campaign_fields}
+        name = campaign["campaign_name"]
+        if name in campaigns and campaigns[name] != campaign:
+            raise ValueError(f"conflicting campaign definition: {name}")
+        campaigns[name] = campaign
+        targets.append({field: row[field] for field in target_fields})
+    return list(campaigns.values()), targets
+
+
 def write_plan(path, products, campaigns, negatives):
     with open(path, "w", encoding="utf-8") as f:
         f.write("# Amazon Japan Sponsored Products 30-Day Plan\n\n")
@@ -340,12 +377,17 @@ def write_plan(path, products, campaigns, negatives):
             f.write(f"- Target ACOS: {product['target_acos'] * 100:.1f}%\n")
             f.write(f"- Daily budget: JPY {product['daily_budget_jpy']:.0f}\n\n")
         f.write("## Campaign Structure\n\n")
-        f.write("| Campaign | Targeting | Target | Match | Bid | Budget | Purpose |\n")
-        f.write("|---|---|---|---|---:|---:|---|\n")
+        f.write("Campaign budgets are set once per campaign. Targets share that budget.\n\n")
+        f.write("| Campaign | Daily budget JPY | Purpose |\n|---|---:|---|\n")
+        campaign_rows, _ = campaign_and_target_rows(campaigns)
+        for row in campaign_rows:
+            f.write(f"| {row['campaign_name']} | {row['daily_budget_jpy']} | {row['purpose']} |\n")
+        f.write("\n| Campaign | Targeting | Target | Match | Bid |\n")
+        f.write("|---|---|---|---|---:|\n")
         for row in campaigns:
             f.write(
                 f"| {row['campaign_name']} | {row['targeting']} | {row['target']} | "
-                f"{row['match_type']} | {row['bid_jpy']} | {row['daily_budget_jpy']} | {row['purpose']} |\n"
+                f"{row['match_type']} | {row['bid_jpy']} |\n"
             )
         f.write("\n## Negative Rules\n\n")
         if negatives:
@@ -395,29 +437,50 @@ def main():
     parser.add_argument("--keywords", required=True)
     parser.add_argument("--competitors")
     parser.add_argument("--search-term-report")
+    parser.add_argument("--gate-decision", required=True)
+    parser.add_argument("--seller-decision", required=True)
+    parser.add_argument("--fba-plan", required=True)
     parser.add_argument("--default-daily-budget-jpy", type=int, default=3000)
     parser.add_argument("--output-prefix", default="amazon_jp_ads")
     args = parser.parse_args()
 
     products = [normalize_product(row, args.default_daily_budget_jpy) for row in read_csv(args.products)]
     keywords = [normalize_keyword(row) for row in read_csv(args.keywords)]
+    if not products or not keywords:
+        parser.error("products and keyword master must have rows")
+    if len({product["sku"] for product in products}) != len(products) or any(not product["sku"] for product in products):
+        parser.error("products need unique, nonempty SKUs")
+    if any(not keyword["sku"] for keyword in keywords):
+        parser.error("keyword master rows require SKU")
+    for product in products:
+        sku = product["sku"]
+        if not (has_pass(args.gate_decision, sku) and has_pass(args.seller_decision, sku)
+                and has_pass(args.fba_plan, sku, "status")):
+            parser.error(f"Gate, Seller Central, and FBA must pass for SKU {sku}")
+        if product["price_jpy"] <= 0 or product["gross_profit_jpy"] <= 0 or product["daily_budget_jpy"] < 300:
+            parser.error(f"price and profit must be positive; daily budget must be at least 300 JPY for SKU {sku}")
+        if not any(keyword["sku"] == sku for keyword in keywords):
+            parser.error(f"no keywords for SKU {sku}")
     competitors = [normalize_competitor(row) for row in read_csv(args.competitors)]
     search_report = read_csv(args.search_term_report)
 
     all_campaigns = []
     all_negatives = []
     for product in products:
-        campaigns, negatives = plan_for_product(product, keywords, competitors)
+        campaigns, negatives = plan_for_product(product, [keyword for keyword in keywords if keyword["sku"] == product["sku"]], competitors)
         all_campaigns.extend(campaigns)
         all_negatives.extend(negatives)
 
-    write_csv(f"{args.output_prefix}.campaigns.csv", all_campaigns)
+    campaign_rows, target_rows = campaign_and_target_rows(all_campaigns)
+    write_csv(f"{args.output_prefix}.campaigns.csv", campaign_rows)
+    write_csv(f"{args.output_prefix}.targets.csv", target_rows)
     write_csv(f"{args.output_prefix}.negatives.csv", all_negatives)
     write_plan(f"{args.output_prefix}.30_day_plan.md", products, all_campaigns, all_negatives)
     feedback = build_feedback(products, search_report)
     write_csv(f"{args.output_prefix}.search_term_feedback.csv", feedback)
     write_feedback_plan(f"{args.output_prefix}.search_term_feedback.md", feedback)
     print(f"{args.output_prefix}.campaigns.csv")
+    print(f"{args.output_prefix}.targets.csv")
     print(f"{args.output_prefix}.negatives.csv")
     print(f"{args.output_prefix}.30_day_plan.md")
     print(f"{args.output_prefix}.search_term_feedback.csv")

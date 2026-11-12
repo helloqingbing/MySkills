@@ -59,12 +59,14 @@ python3 scripts/review_performance.py \
   --search-terms ads_search_term_feedback.csv \
   --inventory inventory.normalized.csv \
   --returns returns.normalized.csv \
+  --report-manifest report_manifest.csv \
   --output-prefix performance
 ```
 
 The script writes:
 
 - `performance.actions.csv`
+- `performance.decisions.csv` (one decision per SKU)
 - `performance.alerts.csv`
 - `performance.weekly_review.md`
 

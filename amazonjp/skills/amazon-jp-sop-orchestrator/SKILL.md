@@ -80,6 +80,11 @@ Required gates:
 
 1. Create or verify workspace structure.
    Run `scripts/create_launch_workspace.py` when the user wants a project folder or reusable templates.
+   Record every G0-G12 decision with `scripts/record_gate.py`; passing requires a matching
+   decision CSV, approver, and existing evidence files. G6 additionally requires
+   `evidence_matrix.csv` and `landed_cost_model.csv`; the script recalculates the
+   launch-gate result before advancing. The script updates
+   `workflow_state.json`, `gate_decisions.csv`, and `artifact_manifest.csv`.
 
 2. Sync live data when the user provides fresh reports.
    Use `amazon-jp-live-data-sync` for Seller Central, Amazon Ads, inventory, returns, reviews, or weekly operating exports.

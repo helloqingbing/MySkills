@@ -53,6 +53,10 @@ python3 scripts/normalize_live_reports.py \
   --inventory inventory_report.csv \
   --returns returns.csv \
   --reviews reviews.csv \
+  --period-start YYYY-MM-DD \
+  --report-end YYYY-MM-DD \
+  --exported-at YYYY-MM-DDTHH:MM:SS \
+  --sku-scope SKU-1,SKU-2 \
   --output-dir live_data
 ```
 
@@ -64,6 +68,12 @@ The script writes:
 - `returns.normalized.csv`
 - `reviews.normalized.csv`
 - `live_data_quality_note.md`
+- `report_manifest.csv` with source and normalized SHA-256, SKU scope, period end, generation time, and row count
+
+Missing required headers or values, empty business/ads/inventory reports, and reports older than
+14 days fail validation. Header-only returns/reviews reports are accepted when `--sku-scope`
+explicitly names the covered SKUs. Also provide `--sku-scope` for ASIN-only reviews. Supply a
+truthful `--report-end` for the batch; use separate runs when reports cover different end dates.
 
 ## Output
 

@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Amazon JP Launch OS · Architecture Review</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}body{margin:0;background:#020617;color:#e2e8f0;font:13px/1.65 'JetBrains Mono',monospace;padding:30px}main{max-width:1220px;margin:auto}.head{display:flex;gap:12px;align-items:center}.dot{height:11px;width:11px;border-radius:50%;background:#22d3ee;box-shadow:0 0 20px #22d3ee;animation:pulse 2s infinite}@keyframes pulse{50%{opacity:.4}}h1{font-size:24px;margin:0}p.sub{color:#94a3b8;margin:5px 0 25px 23px}.panel,.card{background:#0f172a;border:1px solid #334155;border-radius:12px}.panel{padding:18px;overflow:auto}svg{display:block;width:100%;min-width:1050px}.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:18px}.card{padding:18px}.card h2{font-size:14px;margin:0 0 9px}.card p{margin:0;color:#94a3b8}.risk{color:#fb7185}.warn{color:#fbbf24}.ok{color:#34d399}.footer{color:#64748b;text-align:center;margin:20px 0 0;font-size:11px}@media(max-width:760px){body{padding:14px}.cards{grid-template-columns:1fr}}
+</style>
+</head>
+<body><main>
+<div class="head"><span class="dot"></span><h1>Amazon JP Launch OS · 工程审查</h1></div>
+<p class="sub">基于仓库中的 14 个 skill、修复后的脚本与回归测试；虚线红框标出需要严格证据校验的决策节点。</p>
+<div class="panel"><svg viewBox="0 0 1180 650" role="img" aria-label="Amazon JP 启动流程架构和审查发现">
+<defs><pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0L0 0 0 40" fill="none" stroke="#1e293b" stroke-width=".6"/></pattern><marker id="arrow" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0 0L10 4 0 8Z" fill="#64748b"/></marker></defs>
+<rect width="1180" height="650" fill="url(#grid)"/>
+<!-- Flow lines first so nodes mask them. -->
+<g fill="none" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)">
+<path d="M190 175H235"/><path d="M410 175H455"/><path d="M630 175H675"/><path d="M850 175H895"/>
+<path d="M980 215V320H850"/><path d="M675 355H630"/><path d="M455 355H410"/><path d="M235 355H190"/>
+<path d="M100 390V495H235"/><path d="M410 530H455"/><path d="M630 530H675"/><path d="M850 530H895"/>
+</g>
+<path d="M980 495V444H775V390" fill="none" stroke="#fb923c" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#arrow)"/>
+<g fill="none" stroke="#fb7185" stroke-width="1.5" stroke-dasharray="5 4"><rect x="652" y="96" width="221" height="150" rx="12"/><rect x="653" y="439" width="220" height="147" rx="12"/></g>
+<text x="665" y="111" fill="#fb7185" font-size="9">Gate · SKU 级证据校验</text><text x="665" y="454" fill="#fb7185" font-size="9">Review · 数据完整性校验</text>
+<g font-size="10" font-weight="600" text-anchor="middle">
+<g><rect x="15" y="135" width="175" height="80" rx="6" fill="#0f172a"/><rect x="15" y="135" width="175" height="80" rx="6" fill="rgba(30,41,59,.5)" stroke="#94a3b8" stroke-width="1.5"/><text x="102" y="162" fill="#fff">外部导出 / 人工证据</text><text x="102" y="182" fill="#94a3b8" font-size="8">POE · SQP · Ads · SC</text></g>
+<g><rect x="235" y="135" width="175" height="80" rx="6" fill="#0f172a"/><rect x="235" y="135" width="175" height="80" rx="6" fill="rgba(6,78,59,.4)" stroke="#34d399" stroke-width="1.5"/><text x="322" y="162" fill="#fff">数据接入 / 清洗</text><text x="322" y="182" fill="#94a3b8" font-size="8">live-data-sync · ingestor</text></g>
+<g><rect x="455" y="135" width="175" height="80" rx="6" fill="#0f172a"/><rect x="455" y="135" width="175" height="80" rx="6" fill="rgba(6,78,59,.4)" stroke="#34d399" stroke-width="1.5"/><text x="542" y="162" fill="#fff">选品 / 风险 / 供应商</text><text x="542" y="182" fill="#94a3b8" font-size="8">scorer · auditor · QC</text></g>
+<g><rect x="675" y="135" width="175" height="80" rx="6" fill="#0f172a"/><rect x="675" y="135" width="175" height="80" rx="6" fill="rgba(136,19,55,.4)" stroke="#fb7185" stroke-width="1.5"/><text x="762" y="162" fill="#fff">Launch Gate</text><text x="762" y="182" fill="#fda4af" font-size="8">必备控制项 + proof</text></g>
+<g><rect x="895" y="135" width="175" height="80" rx="6" fill="#0f172a"/><rect x="895" y="135" width="175" height="80" rx="6" fill="rgba(6,78,59,.4)" stroke="#34d399" stroke-width="1.5"/><text x="982" y="162" fill="#fff">产品 / Listing</text><text x="982" y="182" fill="#94a3b8" font-size="8">review miner · A+</text></g>
+<g><rect x="675" y="315" width="175" height="80" rx="6" fill="#0f172a"/><rect x="675" y="315" width="175" height="80" rx="6" fill="rgba(6,78,59,.4)" stroke="#34d399" stroke-width="1.5"/><text x="762" y="342" fill="#fff">Seller Central</text><text x="762" y="362" fill="#94a3b8" font-size="8">字段清单 / 人工上传</text></g>
+<g><rect x="455" y="315" width="175" height="80" rx="6" fill="#0f172a"/><rect x="455" y="315" width="175" height="80" rx="6" fill="rgba(6,78,59,.4)" stroke="#34d399" stroke-width="1.5"/><text x="542" y="342" fill="#fff">FBA 计划</text><text x="542" y="362" fill="#94a3b8" font-size="8">库存 / 发货建议</text></g>
+<g><rect x="235" y="315" width="175" height="80" rx="6" fill="#0f172a"/><rect x="235" y="315" width="175" height="80" rx="6" fill="rgba(6,78,59,.4)" stroke="#34d399" stroke-width="1.5"/><text x="322" y="342" fill="#fff">广告计划</text><text x="322" y="362" fill="#94a3b8" font-size="8">campaign / keywords</text></g>
+<g><rect x="15" y="315" width="175" height="80" rx="6" fill="#0f172a"/><rect x="15" y="315" width="175" height="80" rx="6" fill="rgba(120,53,15,.3)" stroke="#fbbf24" stroke-width="1.5"/><text x="102" y="342" fill="#fff">人工上线</text><text x="102" y="362" fill="#94a3b8" font-size="8">上传 / 入仓 proof 验收</text></g>
+<g><rect x="235" y="490" width="175" height="80" rx="6" fill="#0f172a"/><rect x="235" y="490" width="175" height="80" rx="6" fill="rgba(30,41,59,.5)" stroke="#94a3b8" stroke-width="1.5"/><text x="322" y="517" fill="#fff">运营周报</text><text x="322" y="537" fill="#94a3b8" font-size="8">metrics · search terms</text></g>
+<g><rect x="455" y="490" width="175" height="80" rx="6" fill="#0f172a"/><rect x="455" y="490" width="175" height="80" rx="6" fill="rgba(6,78,59,.4)" stroke="#34d399" stroke-width="1.5"/><text x="542" y="517" fill="#fff">Performance Reviewer</text><text x="542" y="537" fill="#94a3b8" font-size="8">actions · alerts · report</text></g>
+<g><rect x="675" y="490" width="175" height="80" rx="6" fill="#0f172a"/><rect x="675" y="490" width="175" height="80" rx="6" fill="rgba(136,19,55,.4)" stroke="#fb7185" stroke-width="1.5"/><text x="762" y="517" fill="#fff">放量 / 优化决策</text><text x="762" y="537" fill="#fda4af" font-size="8">缺指标时 needs_proof</text></g>
+<g><rect x="895" y="490" width="175" height="80" rx="6" fill="#0f172a"/><rect x="895" y="490" width="175" height="80" rx="6" fill="rgba(251,146,60,.3)" stroke="#fb923c" stroke-width="1.5"/><text x="982" y="517" fill="#fff">反馈回流</text><text x="982" y="537" fill="#94a3b8" font-size="8">Ads · Listing · QC · FBA</text></g>
+</g>
+<text x="15" y="47" fill="#fbbf24" font-size="12" font-weight="600">控制面：amazon-jp-sop-orchestrator</text><text x="15" y="67" fill="#94a3b8" font-size="9">工作区包含 workflow_state、gate_decisions 与 artifact_manifest；按 G0-G12 顺序记录</text>
+<text x="15" y="623" fill="#94a3b8" font-size="9">灰：输入 / 人工动作　绿：脚本处理　玫红：高风险决策　橙：反馈或外部执行</text>
+</svg></div>
+<div class="cards"><div class="card"><h2 class="ok">已修复 · Launch Gate</h2><p>按 SKU 校验八个必备控制项、证据来源和日期；缺成本或 proof 时无法通过，并记录 Gate 决策。</p></div><div class="card"><h2 class="ok">已修复 · 放量决策</h2><p>缺关键指标、完整周窗口或新鲜报表时返回 needs_proof；缺 ACOS 时不建议提词。</p></div><div class="card"><h2 class="warn">待实证 · 真实 SKU</h2><p>Seller Central 与 FBA 操作须绑定非空 proof 文件。真实 SKU 的业务回归仍需实际报表、后台截图和审批资料。</p></div></div>
+<p class="footer">Repository review · 2026-11-12 · architecture-review.html</p>
+</main></body></html>

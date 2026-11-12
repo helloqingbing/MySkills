@@ -7,13 +7,15 @@ Use `evidence_matrix.csv` to decide whether a SKU can continue.
 | Field | Required | Notes |
 |---|---|---|
 | `candidate_id` | yes | Research opportunity ID |
-| `sku` | no | Required before FBA/listing |
+| `sku` | yes | Gate decisions are isolated by SKU |
 | `control_ref` | yes | e.g. AMZ-JP-CAT-01 |
 | `control_area` | yes | category/gtin/ip/label/import/fba/supplier/cost/claim |
 | `requirement` | yes | What must be true |
-| `evidence` | no | File, URL, screenshot, report, or user confirmation |
+| `evidence` | yes for pass/N/A | Nonempty local screenshot or report snapshot; a remote URL or user confirmation alone is insufficient |
+| `evidence_source` | yes for pass/N/A | System or organization providing the proof |
+| `evidence_date` | yes for pass/N/A | ISO date, YYYY-MM-DD |
 | `status` | yes | pass/needs_proof/blocked/not_applicable |
-| `owner` | no | Responsible person/team |
+| `owner` | yes for pass/N/A | Responsible person/team |
 | `due_date` | no | Optional |
 | `blocking_reason` | no | Required for blocked |
 
@@ -57,7 +59,8 @@ Use `landed_cost_model.csv`.
 ## Decision Rules
 
 - `blocked` if any evidence control is `blocked`.
-- `needs_proof` if any required evidence control is missing or `needs_proof`.
+- `needs_proof` if any required control row is missing, duplicated, malformed, or lacks owner/source/date/proof.
+- Evaluate each SKU separately; a missing SKU or duplicate landed-cost row cannot pass.
 - `blocked` if price or major cost fields are absent.
 - `blocked` if `gross_margin_pct` is below the threshold and no override is stated.
 - `pass` only when no hard blocks remain and economics meet the target.

@@ -48,6 +48,8 @@ For file-based checks, run:
 python3 scripts/build_seller_central_checklist.py \
   --listing listing_package.csv \
   --evidence evidence_matrix.csv \
+  --gate-decision launch_gate.decision.csv \
+  --ops-proof seller_central_upload_proof.csv \
   --output-prefix seller_central
 ```
 
@@ -56,6 +58,10 @@ The script writes:
 - `seller_central.checklist.csv`
 - `seller_central.ops_log.csv`
 - `seller_central.readiness.md`
+- `seller_central.decision.csv`
+
+The proof CSV uses `sku,field,evidence_file,owner,status`. Each field requires a nonempty
+local screenshot or uploaded flat-file proof with `status=done` before readiness can pass.
 
 ## Output
 

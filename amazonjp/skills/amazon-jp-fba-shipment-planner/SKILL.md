@@ -53,6 +53,9 @@ python3 scripts/plan_fba_shipment.py \
   --inventory inventory.csv \
   --package-specs package_specs.csv \
   --daily-sales daily_sales.csv \
+  --gate-decision launch_gate.decision.csv \
+  --seller-decision seller_central.decision.csv \
+  --shipment-proof shipment_proof.csv \
   --output-prefix fba
 ```
 
@@ -61,6 +64,13 @@ The script writes:
 - `fba.shipment_plan.csv`
 - `fba.replenishment_alerts.csv`
 - `fba.execution_checklist.md`
+
+The proof CSV contains `sku,fnsku_label_file,carton_label_file,box_content_file,shipment_plan_file`.
+All four local files must exist and be nonempty before a non-blocked SKU can pass.
+Missing daily sales, inventory quantities, dimensions, carton weight, lead times or weight yield `needs_proof`; inbound
+stock is excluded from current days of supply.
+Set `launch_phase=prelaunch` in inventory for a first shipment with no sellable stock; live
+replenishment uses `launch_phase=live` (the default) and blocks projected stockout before lead time.
 
 ## Output
 

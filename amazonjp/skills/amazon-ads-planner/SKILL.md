@@ -34,11 +34,14 @@ Optional inputs:
 3. If CSV files are available, run:
 
 ```bash
-python3 scripts/plan_amazon_ads.py --products products.csv --keywords amazon_keyword_master.csv --competitors competitors.csv --search-term-report search_terms_report.csv --output-prefix jp_ads
+python3 scripts/plan_amazon_ads.py --products products.csv --keywords amazon_keyword_master.csv --competitors competitors.csv --search-term-report search_terms_report.csv --gate-decision launch_gate.decision.csv --seller-decision seller_central.decision.csv --fba-plan fba.shipment_plan.csv --output-prefix jp_ads
 ```
 
 4. If only inline data is available, apply the same formulas manually.
 5. Output:
+   - `.campaigns.csv` with one row and one daily budget per campaign
+   - `.targets.csv` with target bids and no repeated budget
+   - `.negatives.csv` with negative keyword rules
    - campaign structure table
    - per-campaign daily budget
    - per-target starting bid
